@@ -1,14 +1,22 @@
 #!/bin/bash
+# Pfad: ~/duckierace_groupe1/netzwerk.sh
+
+# 1. Namen aus dem Argument nehmen (falls leer, nimm 'tick')
+BOT_NAME=$1
+if [ -z "$BOT_NAME" ]; then
+    BOT_NAME="tick"
+fi
+
+# 2. ROS-Umgebung laden
 source /opt/ros/noetic/setup.bash
 
-export ROS_MASTER_URI=http://tick.local:11311
-
+# 3. Netzwerk-Variablen dynamisch setzen
+export VEHICLE_NAME=$BOT_NAME
+export ROS_MASTER_URI=http://$BOT_NAME.local:11311
 export ROS_IP=192.168.90.111
 
-export VEHICLE_NAME=tick
-
-cd ~/DuckieRace_2026-main/
-
+# 4. Workspace laden
+cd ~/duckierace_groupe1
 source devel/setup.bash
 
-echo "ROS-Netzwerk geladen! Master: $ROS_MASTER_URI | VM-IP $ROS_IP"
+echo "✅ Netzwerk bereit: $VEHICLE_NAME | Master: $ROS_MASTER_URI"
