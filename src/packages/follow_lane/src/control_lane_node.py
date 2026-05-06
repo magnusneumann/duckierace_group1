@@ -10,8 +10,9 @@ class ControlLaneNode:
     def __init__(self, node_name):
         rospy.init_node(node_name)
         self.enable = True
+        self.is_stopped = False  # NEU: Eigene Variable für die Stopplinie
         self._vehicle_name = os.environ['VEHICLE_NAME']
-
+        rospy.init_node(node_name)
         self.lastError = 0
         self.v = 0.1
         self.a = 0
@@ -58,12 +59,23 @@ class ControlLaneNode:
         self.lastError = error
 
     def cbStopline(self, msg):
-        rospy.loginfo("Stopline! Stopping for 2 seconds.")
-        self.enable = False
-        rospy.Timer(rospy.Duration(2.0), self.cbRestoreAfterStop, oneshot=True)
+        # NEU: Nur auslösen, wenn wir nicht sowieso schon stehen
+        if not self.is_stopped:
+            rospy.loginfo("Stopline! Stopping for 2 seconds.")
+            self.is_stopped = True
+            
+            # NEU: Den Motoren EXPLIZIT sagen, dass sie anhalten sollen!
+            twist = Twist2DStamped()
+            twist.header.stamp = rospy.Time.now()
+            twist.v = 0.0
+            twist.omega = 0.0
+            self.pub_cmd_vel.publish(twist)
+            
+            rospy.Timer(rospy.Duration(2.0), self.cbRestoreAfterStop, oneshot=True)
 
     def cbRestoreAfterStop(self, event):
-        self.enable = True
+        self.is_stopped = False
+        rospy.loginfo("Weiterfahren!")
 
     def fnShutDown(self):
         rospy.loginfo("Shutting down. cmd_vel will be 0")
@@ -73,7 +85,8 @@ class ControlLaneNode:
     def run(self):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-            if self.enable:
+            # NEU: Er darf nur fahren, wenn enabled UND NICHT gestoppt
+            if self.enable and not self.is_stopped:
                 twist = Twist2DStamped()
                 twist.header.stamp = rospy.Time.now()
                 twist.v = self.v

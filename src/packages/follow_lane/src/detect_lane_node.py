@@ -91,9 +91,10 @@ class DetectLaneNode:
 
         # Nur die unteren 10% der Kamera auswerten
         h = mask_red.shape[0]
-        roi = mask_red[int(h * 0.90):h, :]
+        roi = mask_red[int(h * 0.70):h, :]
 
         red_pixels = np.count_nonzero(roi)
+        rospy.loginfo(f"Rote Pixel im Suchbereich: {red_pixels}") #gitb Anz Pixels im Log aus
 
         if self.stop_cooldown > 0:
             self.stop_cooldown -= 1
@@ -102,7 +103,7 @@ class DetectLaneNode:
         if red_pixels > self.red_pixel_threshold:
             rospy.loginfo(f"Stopline detected! ({red_pixels} px)")
             self.pub_stopline.publish(String(data="stop"))
-            self.stop_cooldown = 30  # ~3 Sekunden bei 10Hz, damit nicht mehrfach feuert
+            self.stop_cooldown = 40  # ~3 Sekunden bei 10Hz, damit nicht mehrfach feuert
         return mask_red
   
     def crop_img(self,img):
@@ -224,7 +225,9 @@ class DetectLaneNode:
     def run_debug(self):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-
+            if not hasattr(self, 'img'):
+                rate.sleep()
+                continue
             # add debug info to lane image
             if self.pub_debug_lane.get_num_connections() > 0:
                 debug_img = self.img.copy()
