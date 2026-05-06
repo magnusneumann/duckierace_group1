@@ -170,7 +170,7 @@ class DetectLaneNode:
         white_alternative = int(len(img[0]) * 0.95)
         yellow_alternative = int(len(img[0]) * 0.05)
 
-        center_white = self.get_x_for_driving(mask_white,int(len(img)*0.75), white_alternative, left_line=True)
+        center_white = self.get_x_for_driving(mask_white,int(len(img)*0.75), white_alternative, left_line=False)
         center_yellow = self.get_x_for_driving(mask_yellow,int(len(img)*0.75), yellow_alternative, left_line=False)
 
 

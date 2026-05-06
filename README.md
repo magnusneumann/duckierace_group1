@@ -1,5 +1,9 @@
 # DuckieRace
 
+./docker_login.sh um im Docker den Login zu machen
+duckie, dann Name um im VM den Login zu machen
+
+
 ## Setup Virtual Box with ros noetic
 
 Download Ubuntu 20.04 image from https://www.releases.ubuntu.com/focal/
