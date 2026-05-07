@@ -1,13 +1,26 @@
 # DuckieRace
 
-./docker_login.sh um im Docker den Login zu machen
-duckie, dann Name um im VM den Login zu machen
+##  Befehle für Magnus
+Docker startet sich selbst, VS Code fragt: reopen in container, sonst STRG + SHIFT + P
 
-Docker darf gui's öffnen:
-xhost +local:root im gobal terminal
+Auf Bot einloggen im Terminal im Container:
+./docker_login.sh dann Botnamen eingeben
+
+Im Terminal scrollen:
+STRG + B, :, set -g mouse on
+
+Terminal wechseln:
+STRG + B, Pfeiltaste
+
+Docker darf GUI's öffnen:
+xhost +local:root im gobalen Terminal
 
 
 ## Setup Virtual Box with ros noetic
+Startup: Terminal öffnen (global), Eingabe:
+duckie
+dann Namen des Bots im terminal eingeben und Enter
+
 
 Download Ubuntu 20.04 image from https://www.releases.ubuntu.com/focal/
 Setup a virtual machine with the image. Set the network adapter to bridged adapter so that the VM uses the same Network as the host.
