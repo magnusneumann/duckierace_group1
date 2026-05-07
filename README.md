@@ -3,6 +3,9 @@
 ./docker_login.sh um im Docker den Login zu machen
 duckie, dann Name um im VM den Login zu machen
 
+Docker darf gui's öffnen:
+xhost +local:root im gobal terminal
+
 
 ## Setup Virtual Box with ros noetic
 

@@ -27,10 +27,10 @@
         "white":{
             "hh": {"default": 255, "min": 0, "max": 255},
             "hl": {"default": 0, "min": 0, "max": 255},
-            "sh": {"default": 68, "min": 0, "max": 255},
-            "sl": {"default": 18, "min": 0, "max": 255},
+            "sh": {"default": 63, "min": 0, "max": 255},
+            "sl": {"default": 0, "min": 0, "max": 255},
             "vh": {"default": 255, "min": 0, "max": 255},
-            "vl": {"default": 180, "min": 0, "max": 255}
+            "vl": {"default": 173, "min": 0, "max": 255}
         },
         "red":{
             "hh1": {"default": 10,  "min": 0, "max": 180},

@@ -103,7 +103,7 @@ class DetectLaneNode:
         if red_pixels > self.red_pixel_threshold:
             rospy.loginfo(f"Stopline detected! ({red_pixels} px)")
             self.pub_stopline.publish(String(data="stop"))
-            self.stop_cooldown = 40  # ~3 Sekunden bei 10Hz, damit nicht mehrfach feuert
+            self.stop_cooldown = 40  # ~4 Sekunden bei 10Hz, damit nicht mehrfach feuert
         return mask_red
   
     def crop_img(self,img):
