@@ -36,15 +36,10 @@ class DetectSignNode:
 # ID=9: geradeaus, rechts
 # ID=10: links, geradeaus
 
-    # TODO: Replace these IDs with the AprilTag IDs used on your real signs.
     DEFAULT_SIGN_RULES: Dict[int, IntersectionSign] = {
-        1: IntersectionSign("left_or_straight", ["left", "straight"]),
-        2: IntersectionSign("right_or_straight", ["right", "straight"]),
-        3: IntersectionSign("left_or_right", ["left", "right"]),
-        4: IntersectionSign("all_directions", ["left", "straight", "right"]),
-        5: IntersectionSign("left_only", ["left"]),
-        6: IntersectionSign("straight_only", ["straight"]),
-        7: IntersectionSign("right_only", ["right"]),
+        8: IntersectionSign("all_directions", ["left", "straight", "right"]),
+        9: IntersectionSign("straight_or_right", ["straight", "right"]),
+        10: IntersectionSign("left_or_straight", ["left", "straight"]),
     }
 
     def __init__(self, node_name):
@@ -69,6 +64,10 @@ class DetectSignNode:
             "~sign_topic",
             f"/{self._vehicle_name}/detect/sign",
         )
+        test_output_topic = rospy.get_param(
+            "~test_output_topic",
+            f"/{self._vehicle_name}/debug/sign_decision",
+        )
 
         self.sub_detections = rospy.Subscriber(
             detections_topic,
@@ -78,11 +77,13 @@ class DetectSignNode:
         )
         self.pub_decision = rospy.Publisher(decision_topic, String, queue_size=1, latch=True)
         self.pub_sign = rospy.Publisher(sign_topic, String, queue_size=1)
+        self.pub_test_output = rospy.Publisher(test_output_topic, String, queue_size=1)
 
         rospy.loginfo(
-            "detect_sign_node listening on %s and publishing decisions on %s",
+            "detect_sign_node listening on %s and publishing decisions on %s. Test output on %s",
             detections_topic,
             decision_topic,
+            test_output_topic,
         )
 
     def load_tag_rules(self) -> Dict[int, IntersectionSign]:
@@ -122,6 +123,7 @@ class DetectSignNode:
 
         self.pub_sign.publish(String(data=sign.name))
         self.pub_decision.publish(String(data=decision))
+        self.publish_test_output(detection.tag_id, decision)
 
         rospy.loginfo(
             "Detected sign '%s' via AprilTag %s. Allowed=%s, selected=%s",
@@ -143,6 +145,11 @@ class DetectSignNode:
             return None
 
         return max(known_detections, key=lambda detection: detection.decision_margin)
+
+    def publish_test_output(self, tag_id, decision):
+        test_message = f"AprilTag ID={tag_id} -> random direction={decision}"
+        self.pub_test_output.publish(String(data=test_message))
+        rospy.loginfo("[SIGN TEST] %s", test_message)
 
     def is_in_cooldown(self, now, tag_id):
         if self.last_tag_id != tag_id:
