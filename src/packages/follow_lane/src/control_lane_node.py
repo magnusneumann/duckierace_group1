@@ -71,7 +71,7 @@ class ControlLaneNode:
             twist.omega = 0.0
             self.pub_cmd_vel.publish(twist)
             
-            rospy.Timer(rospy.Duration(2.0), self.cbRestoreAfterStop, oneshot=True)
+            rospy.Timer(rospy.Duration(3.0), self.cbRestoreAfterStop, oneshot=True)
 
     def cbRestoreAfterStop(self, event):
         self.is_stopped = False

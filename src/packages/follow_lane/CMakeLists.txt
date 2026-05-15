@@ -3,4 +3,6 @@ project(follow_lane)
 
 find_package(catkin REQUIRED COMPONENTS
   rospy
+  std_msgs
+  duckietown_msgs
 )
