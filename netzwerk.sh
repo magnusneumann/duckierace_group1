@@ -4,7 +4,7 @@
 # 1. Namen aus dem Argument nehmen (falls leer, nimm 'tick')
 BOT_NAME=$1
 if [ -z "$BOT_NAME" ]; then
-    BOT_NAME="tick"
+    BOT_NAME="gustav"
 fi
 
 # 2. ROS-Umgebung laden

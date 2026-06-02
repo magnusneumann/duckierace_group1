@@ -1,166 +1,105 @@
 #!/usr/bin/env python3
-
-# Erkennt AprilTags an Kreuzungen und leitet daraus eine Fahrentscheidung ab.
-# - empfängt AprilTag-Detektionen
-# - wählt den besten gültigen Tag aus
-# - bestimmt erlaubte Fahrtrichtungen
-# - wählt zufällig links/rechts/geradeaus
-# - veröffentlicht Entscheidung über ROS Topics
-# - Cooldown verhindert Mehrfachauslösung
-# Ziel: automatische Kreuzungsentscheidung für den Duckiebot
-
 import os
 import random
-from dataclasses import dataclass
-from typing import Dict, List, Optional
-
+import cv2
+import numpy as np
 import rospy
-from duckietown_msgs.msg import AprilTagDetectionArray
 from std_msgs.msg import String
+from sensor_msgs.msg import CompressedImage
+from pupil_apriltags import Detector
 
-
-@dataclass(frozen=True)
-class IntersectionSign:
-    name: str
-    allowed_directions: List[str]
 
 
 class DetectSignNode:
-    DIRECTIONS = {"left", "straight", "right"}
-
-# Relevante AprilTags mit ID und erlaubten Fahrtrichtungen
-
-# april.tag.Tag36h11 id=...
-
-# ID=8: links, geradeaus, rechts
-# ID=9: geradeaus, rechts
-# ID=10: links, geradeaus
-
-    DEFAULT_SIGN_RULES: Dict[int, IntersectionSign] = {
-        8: IntersectionSign("all_directions", ["left", "straight", "right"]),
-        9: IntersectionSign("straight_or_right", ["straight", "right"]),
-        10: IntersectionSign("left_or_straight", ["left", "straight"]),
-    }
-
     def __init__(self, node_name):
         rospy.init_node(node_name)
         self._vehicle_name = os.environ["VEHICLE_NAME"]
 
-        self.tag_rules = self.load_tag_rules()
-        self.cooldown_seconds = float(rospy.get_param("~cooldown_seconds", 5.0))
-        self.min_decision_margin = float(rospy.get_param("~min_decision_margin", 20.0))
-        self.last_decision_time = rospy.Time(0)
-        self.last_tag_id: Optional[int] = None
+        # HIER LEGST DU NEUE IDs AN!
+        # Aufbau: ID: ["name", ["richtung1", "richtung2"]]
+        self.tag_rules = {
+            1: ["X-all_directions", ["left", "straight", "right"]],
+            2: ["T-left_or_right", ["left", "right"]],
+            3: ["T-straight_or_left", ["straight", "left"]],
+            4: ["T-straight_or_right", ["straight", "right"]],
+            8: ["all_directions", ["left", "straight", "right"]],
+            9: ["straight_or_right", ["straight", "right"]],
+            10: ["T-left_or_right", ["left", "right"]],
+        }
+        
+        self.current_decision = "straight"
+        self.current_tag_id = "None"
 
-        detections_topic = rospy.get_param(
-            "~detections_topic",
-            f"/{self._vehicle_name}/apriltag_detector_node/detections",
+        # Wir bauen für jede Familie einen eigenen Detektor auf
+        self.detector_36h11 = Detector(
+            families='tag36h11', 
+            nthreads=1, 
+            quad_decimate=1.0
         )
-        decision_topic = rospy.get_param(
-            "~decision_topic",
-            f"/{self._vehicle_name}/intersection/turn_decision",
+        
+        self.detector_52h13 = Detector(
+            families='tagStandard52h13', 
+            nthreads=1, 
+            quad_decimate=1.0
         )
-        sign_topic = rospy.get_param(
-            "~sign_topic",
-            f"/{self._vehicle_name}/detect/sign",
-        )
-        test_output_topic = rospy.get_param(
-            "~test_output_topic",
-            f"/{self._vehicle_name}/debug/sign_decision",
-        )
+        # Topics
+        camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
+        self.pub_decision = rospy.Publisher(f"/{self._vehicle_name}/intersection/turn_decision", String, queue_size=1)
+        rospy.Subscriber(camera_topic, CompressedImage, self.cb_image, queue_size=1, buff_size=2**24)
 
-        self.sub_detections = rospy.Subscriber(
-            detections_topic,
-            AprilTagDetectionArray,
-            self.cb_detections,
-            queue_size=1,
-        )
-        self.pub_decision = rospy.Publisher(decision_topic, String, queue_size=1, latch=True)
-        self.pub_sign = rospy.Publisher(sign_topic, String, queue_size=1)
-        self.pub_test_output = rospy.Publisher(test_output_topic, String, queue_size=1)
+    def cb_image(self, msg):
+        np_arr = np.frombuffer(msg.data, np.uint8)
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        img_width = img.shape[1]
 
-        rospy.loginfo(
-            "detect_sign_node listening on %s and publishing decisions on %s. Test output on %s",
-            detections_topic,
-            decision_topic,
-            test_output_topic,
-        )
+        # --- NEU: Beide Detektoren auf dasselbe Graustufenbild anwenden ---
+        tags_36h11 = self.detector_36h11.detect(gray)
+        tags_52h13 = self.detector_52h13.detect(gray)
+        
+        # Python macht es uns leicht: Wir addieren die Listen einfach!
+        tags = tags_36h11 + tags_52h13
+        # ----------------------------------------------------------------
 
-    def load_tag_rules(self) -> Dict[int, IntersectionSign]:
-        raw_rules = rospy.get_param("~tag_rules", None)
-        if raw_rules is None:
-            return self.DEFAULT_SIGN_RULES
+        best_tag = None
+        
+        for tag in tags:
+            # NUR TAGS AUF DER RECHTEN BILDHÄLFTE AKZEPTIEREN (x > width/2)
+            if tag.center[0] > (img_width / 2):
+                # Rahmen zeichnen
+                ptA, ptB, ptC, ptD = [tuple(map(int, pt)) for pt in tag.corners]
+                cv2.line(img, ptA, ptB, (0, 255, 0), 2)
+                cv2.line(img, ptB, ptC, (0, 255, 0), 2)
+                cv2.line(img, ptC, ptD, (0, 255, 0), 2)
+                cv2.line(img, ptD, ptA, (0, 255, 0), 2)
+                cv2.putText(img, f"ID: {tag.tag_id}", (int(tag.center[0]), int(tag.center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
+                
+                if tag.tag_id in self.tag_rules:
+                    best_tag = tag
 
-        tag_rules = {}
-        for raw_tag_id, rule in raw_rules.items():
-            tag_id = int(raw_tag_id)
-            name = rule.get("name", f"tag_{tag_id}")
-            allowed = rule.get("allowed_directions", [])
-            valid_allowed = [direction for direction in allowed if direction in self.DIRECTIONS]
+        # Wenn ein gültiger Tag rechts gefunden wurde, entscheide!
+        if best_tag:
+            self.current_tag_id = str(best_tag.tag_id)
+            allowed = self.tag_rules[best_tag.tag_id][1]
+            self.current_decision = random.choice(allowed)
+            self.pub_decision.publish(String(data=self.current_decision))
 
-            if not valid_allowed:
-                rospy.logwarn("Ignoring tag %s because it has no valid directions: %s", tag_id, allowed)
-                continue
+        # Legende ins Bild malen (oben links)
+        cv2.rectangle(img, (0,0), (400, 100), (0,0,0), -1)
+        cv2.putText(img, f"Erkannte ID: {self.current_tag_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
+        
+        if self.current_tag_id != "None":
+            allowed_txt = ", ".join(self.tag_rules[int(self.current_tag_id)][1])
+            cv2.putText(img, f"Erlaubt: {allowed_txt}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200,200,200), 1)
+        
+        cv2.putText(img, f"ENTSCHEIDUNG: {self.current_decision.upper()}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
 
-            tag_rules[tag_id] = IntersectionSign(name, valid_allowed)
-
-        return tag_rules
-
-    def cb_detections(self, msg):
-        detection = self.select_best_known_detection(msg)
-        if detection is None:
-            return
-
-        now = rospy.Time.now()
-        if self.is_in_cooldown(now, detection.tag_id):
-            return
-
-        sign = self.tag_rules[detection.tag_id]
-        decision = random.choice(sign.allowed_directions)
-
-        self.last_decision_time = now
-        self.last_tag_id = detection.tag_id
-
-        self.pub_sign.publish(String(data=sign.name))
-        self.pub_decision.publish(String(data=decision))
-        self.publish_test_output(detection.tag_id, decision)
-
-        rospy.loginfo(
-            "Detected sign '%s' via AprilTag %s. Allowed=%s, selected=%s",
-            sign.name,
-            detection.tag_id,
-            sign.allowed_directions,
-            decision,
-        )
-
-    def select_best_known_detection(self, msg):
-        known_detections = [
-            detection
-            for detection in msg.detections
-            if detection.tag_id in self.tag_rules
-            and detection.decision_margin >= self.min_decision_margin
-        ]
-
-        if not known_detections:
-            return None
-
-        return max(known_detections, key=lambda detection: detection.decision_margin)
-
-    def publish_test_output(self, tag_id, decision):
-        test_message = f"AprilTag ID={tag_id} -> random direction={decision}"
-        self.pub_test_output.publish(String(data=test_message))
-        rospy.loginfo("[SIGN TEST] %s", test_message)
-
-    def is_in_cooldown(self, now, tag_id):
-        if self.last_tag_id != tag_id:
-            return False
-
-        elapsed = (now - self.last_decision_time).to_sec()
-        return elapsed < self.cooldown_seconds
+        cv2.imshow("Sign Detection (Rechte Seite)", img)
+        cv2.waitKey(1)
 
     def run(self):
         rospy.spin()
-
 
 if __name__ == "__main__":
     node = DetectSignNode("detect_sign_node")
