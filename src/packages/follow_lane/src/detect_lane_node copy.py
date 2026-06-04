@@ -9,7 +9,6 @@ from sensor_msgs.msg import CompressedImage
 from enum import Enum
 import yaml
 import util
-from geometry_msgs.msg import Polygon
 
 #from duckietown.dtros import DTROS, NodeType
 
@@ -17,7 +16,7 @@ class DetectLaneNode:
     def __init__(self, node_name):
         # initialize the ROS node
         rospy.init_node(node_name)
-        self.duck_obstacles = None
+        
         
         self._vehicle_name = os.environ['VEHICLE_NAME']
         util.init_parameters(node_name,self.cbUpdateParameters)
@@ -39,13 +38,6 @@ class DetectLaneNode:
 
         self.pub_stopline = rospy.Publisher(f'/{self._vehicle_name}/detect/stopline', String, queue_size=1)
         self.stop_cooldown = 0
-
-        #Hier werden die erkannten Enten als Polynom msg übernommen um sie in Masekn zu injezieren
-        
-        rospy.Subscriber(f"/{self._vehicle_name}/detect/duck_obstacles", Polygon, self.cb_duck_obstacles, queue_size=1)
-    
-    def cb_duck_obstacles(self, msg):
-            self.duck_obstacles = msg
 
     def cbUpdateParameters(self, parameters):
         # Update white line parameters
@@ -176,25 +168,6 @@ class DetectLaneNode:
                            (self.hue_white_l,self.saturation_white_l, self.lightness_white_l), 
                            (self.hue_white_h,self.saturation_white_h, self.lightness_white_h),)
         
-        # --- MEHRERE ENTEN IN DIE MASKE INJIZIEREN ---
-        if self.duck_obstacles and len(self.duck_obstacles.points) > 0:
-            img_width = img.shape[1]
-            
-            # Wir iterieren über alle Enten im Array
-            for p in self.duck_obstacles.points:
-                cx = int(p.x)
-                cy = int(p.y)
-                radius = int(p.z)
-
-                if cx > (img_width / 2):
-                    cv2.circle(mask_white, (cx, cy), radius, 255, -1)
-                else:
-                    cv2.circle(mask_yellow, (cx, cy), radius, 255, -1)
-                    
-            # Nach dem Einzeichnen in DIESEM Frame die Liste wieder leeren.
-            # Im nächsten Frame kommt ohnehin das neue Array vom YOLO-Node.
-            #self.duck_obstacles = # einfach sich selbst überschreiben lassen, wenn neue daten kommen
-        
         white_alternative = int(len(img[0]) * 0.95)
         yellow_alternative = int(len(img[0]) * 0.05)
 
@@ -242,12 +215,12 @@ class DetectLaneNode:
 
 
         
-        #cv2.imshow('lane detection', image)
+        cv2.imshow('lane detection', image)
         self.is_running = False
         
         #cv2.imshow('white', mask_white)
         #cv2.imshow('yellow', mask_yellow)
-        #cv2.waitKey(1)
+        cv2.waitKey(1)
             
     def run_debug(self):
         rate = rospy.Rate(10)

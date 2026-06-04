@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 import rospy
-from std_msgs.msg import Int32, String
+from std_msgs.msg import Int32, String, Bool
 from duckietown_msgs.msg import Twist2DStamped
 from enum import Enum
 
@@ -9,6 +9,7 @@ class State(Enum):
     LANE_FOLLOWING = 1
     STOPPED_AT_LINE = 2
     CROSSING_INTERSECTION = 3
+    #AVOID_COLLISION = 4
 
 class SwitchControlNode:
     def __init__(self, node_name):
@@ -16,64 +17,101 @@ class SwitchControlNode:
         self._vehicle_name = os.environ['VEHICLE_NAME']
         
         self.state = State.LANE_FOLLOWING
-        self.turn_decision = "straight" # Standardwert, falls kein Schild da ist
+        self.turn_decision = None # Standard: Wir wissen noch nicht, wohin.
+        
+        # Timer: Bis wann ignorieren wir rote Linien? (Gegen das sofortige Halten nach der Kurve)
+        self.ignore_stopline_until = rospy.Time(0)
 
-        # Publisher
-        self.pub_control = rospy.Publisher(f"/{self._vehicle_name}/switch/control", Int32, queue_size=1)
-        self.pub_cmd_vel = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
+        # --- Publisher ---
+        self.pub_lane_control = rospy.Publisher(f"/{self._vehicle_name}/switch/lane_control", Int32, queue_size=1)
+        #self.pub_duck_control = rospy.Publisher(f"/{self._vehicle_name}/switch/duck_control", Int32, queue_size=1)
         self.pub_execute_turn = rospy.Publisher(f"/{self._vehicle_name}/intersection/execute_turn", String, queue_size=1)
+        self.pub_cmd_vel = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
-        # Subscriber
+        # --- Subscriber ---
         rospy.Subscriber(f"/{self._vehicle_name}/detect/stopline", String, self.cbStopline, queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_decision", String, self.cbTurnDecision, queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_completed", String, self.cbTurnCompleted, queue_size=1)
+        
+        # Zukünftiger YOLO-Input (True = Ente gesehen, False = Weg frei)
+        #rospy.Subscriber(f"/{self._vehicle_name}/detect/duck", Bool, self.cbDuckDetected, queue_size=1)
 
-        rospy.loginfo("Switch Control (State Machine) gestartet.")
+        rospy.loginfo("Switch Control (FSM) gestartet. Bereit für alle Manöver.")
 
     def cbTurnDecision(self, msg):
-        # Aktualisiert die Entscheidung immer, wenn der Sign Node etwas Neues sieht
-        self.turn_decision = msg.data
+        # Wir updaten die Entscheidung asynchron. 
+        # (Wird ignoriert, falls wir gerade schon auf der Kreuzung sind)
+        if self.state != State.CROSSING_INTERSECTION:
+            self.turn_decision = msg.data
+
+    #def cbDuckDetected(self, msg):
+    #    duck_in_way = msg.data
+    #    
+    #    if duck_in_way and self.state != State.AVOID_COLLISION:
+    #        rospy.logwarn("ENTE ERKANNT! Übergebe Kontrolle an Ausweich-Node.")
+    #        self.state = State.AVOID_COLLISION
+    #        # Alle anderen Steuerungen abschalten
+    #        self.pub_lane_control.publish(Int32(0))
+    #        
+    #    elif not duck_in_way and self.state == State.AVOID_COLLISION:
+    #        rospy.loginfo("Weg wieder frei. Zurück zum Lane Following.")
+    #        self.state = State.LANE_FOLLOWING
+    #        self.pub_duck_control.publish(Int32(0)) # Duck-Steuerung aus
 
     def cbStopline(self, msg):
-        if self.state == State.LANE_FOLLOWING:
-            rospy.loginfo("Stopplinie erkannt! Wechsle in STOPPED_AT_LINE.")
+        now = rospy.Time.now()
+        
+        # Wir reagieren nur auf Linien, wenn wir im Spur-Modus sind UND die Ignorier-Zeit abgelaufen ist.
+        # (Eine Ente hat Vorfahrt. Wenn wir wegen einer Ente stehen, ignorieren wir die Kreuzung vorerst)
+        if self.state == State.LANE_FOLLOWING and now > self.ignore_stopline_until:
+            rospy.loginfo("Stopplinie erreicht! Friere aktuelle Entscheidung ein.")
             self.state = State.STOPPED_AT_LINE
             
-            # 1. Spurfolge deaktivieren
-            self.pub_control.publish(Int32(0)) 
+            self.pub_lane_control.publish(Int32(0)) # Spurfolge aus
+            self.pub_cmd_vel.publish(Twist2DStamped(v=0.0, omega=0.0)) # Vollbremsung
             
-            # 2. Aktive Vollbremsung
-            twist = Twist2DStamped(v=0.0, omega=0.0)
-            self.pub_cmd_vel.publish(twist)
-            
-            # 3. Warte 2 Sekunden, dann fahre über die Kreuzung
+            # Wartepflicht von 2 Sekunden absitzen
             rospy.Timer(rospy.Duration(2.0), self.trigger_intersection_crossing, oneshot=True)
 
     def trigger_intersection_crossing(self, event):
+        # Nur losfahren, wenn nicht in der Zwischenzeit eine Ente aufs Bild gelaufen ist!
         if self.state == State.STOPPED_AT_LINE:
-            rospy.loginfo(f"Fahre über Kreuzung. Entscheidung: {self.turn_decision}")
+            
+            # Fallback: Wenn wir nie ein Schild gesehen haben, fahren wir geradeaus.
+            if self.turn_decision is None:
+                rospy.logwarn("Kein Schild gesehen! Fallback: Fahre GERADEAUS.")
+                self.turn_decision = "straight"
+                
+            rospy.loginfo(f"Fahre über Kreuzung: {self.turn_decision}")
             self.state = State.CROSSING_INTERSECTION
-            # Sende den Befehl (z.B. "left", "right") an den Cross Intersection Node
             self.pub_execute_turn.publish(String(data=self.turn_decision))
 
     def cbTurnCompleted(self, msg):
         if self.state == State.CROSSING_INTERSECTION:
-            rospy.loginfo("Kreuzung überquert. Wechsle zurück zu LANE_FOLLOWING.")
+            rospy.loginfo("Kreuzung beendet. Ignoriere Stopplinien für 3 Sekunden.")
+            
+            # Gehörlos-Phase aktivieren, um Reste der roten Linie zu überfahren
+            self.ignore_stopline_until = rospy.Time.now() + rospy.Duration(3.0)
+            
             self.state = State.LANE_FOLLOWING
-            # Spurfolge wieder aktivieren
-            self.pub_control.publish(Int32(1))
-            self.turn_decision = "straight" # Reset
+            self.turn_decision = None # Reset für die nächste Kreuzung
 
     def run(self):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-            # Während wir stehen, spammen wir sicherheitshalber v=0
-            if self.state == State.STOPPED_AT_LINE:
+            # Der Boss verteilt hier die Arbeitserlaubnis (Enable-Signale) stetig an die Arbeiter
+            if self.state == State.LANE_FOLLOWING:
+                self.pub_lane_control.publish(Int32(1))
+                #self.pub_duck_control.publish(Int32(0))
+            #    
+            #elif self.state == State.AVOID_COLLISION:
+            #    self.pub_lane_control.publish(Int32(0))
+            #    self.pub_duck_control.publish(Int32(1)) # Gibt den YOLO-Lenk-Node frei
+            #    
+            elif self.state == State.STOPPED_AT_LINE:
+                self.pub_lane_control.publish(Int32(0))
+                #self.pub_duck_control.publish(Int32(0))
                 self.pub_cmd_vel.publish(Twist2DStamped(v=0.0, omega=0.0))
-            
-            # Wenn wir im normalen Modus sind, senden wir stetig das "Enable"-Signal (1)
-            elif self.state == State.LANE_FOLLOWING:
-                self.pub_control.publish(Int32(1))
                 
             rate.sleep()
 

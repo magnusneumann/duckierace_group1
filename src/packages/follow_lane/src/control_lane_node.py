@@ -23,7 +23,7 @@ class ControlLaneNode:
         self.pub_cmd_vel = rospy.Publisher(twist_topic, Twist2DStamped, queue_size=1)
         
         rospy.Subscriber(f"/{self._vehicle_name}/detect/lane", Float64, self.cbFollowLane, queue_size=1)
-        rospy.Subscriber(f"/{self._vehicle_name}/switch/control", Int32, self.cbControl, queue_size=1)
+        rospy.Subscriber(f"/{self._vehicle_name}/switch/lane_control", Int32, self.cbControl, queue_size=1)
 
         rospy.on_shutdown(self.fnShutDown)
 

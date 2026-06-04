@@ -29,7 +29,6 @@ class DetectSignNode:
         
         self.current_decision = "straight"
         self.current_tag_id = "None"
-        self.min_tag_area = 800  # TUNING WERT: Mindestgröße in Pixeln
 
         # Wir bauen für jede Familie einen eigenen Detektor auf
         self.detector_36h11 = Detector(
@@ -44,7 +43,6 @@ class DetectSignNode:
             quad_decimate=1.0
         )
         # Topics
-        self.pub_debug_sign = rospy.Publisher(f"/{self._vehicle_name}/debug/sign", CompressedImage, queue_size=1)
         camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
         self.pub_decision = rospy.Publisher(f"/{self._vehicle_name}/intersection/turn_decision", String, queue_size=1)
         rospy.Subscriber(camera_topic, CompressedImage, self.cb_image, queue_size=1, buff_size=2**24)
@@ -64,14 +62,12 @@ class DetectSignNode:
         tags = tags_36h11 + tags_52h13
         # ----------------------------------------------------------------
 
-        # Innerhalb der cb_image, nach tags = tags_36h11 + tags_52h13
         best_tag = None
-        max_area = 0
-
+        
         for tag in tags:
+            # NUR TAGS AUF DER RECHTEN BILDHÄLFTE AKZEPTIEREN (x > width/2)
             if tag.center[0] > (img_width / 2):
-                # Polygon-Fläche berechnen
-                area = cv2.contourArea(np.array(tag.corners, dtype=np.float32))
+                # Rahmen zeichnen
                 ptA, ptB, ptC, ptD = [tuple(map(int, pt)) for pt in tag.corners]
                 cv2.line(img, ptA, ptB, (0, 255, 0), 2)
                 cv2.line(img, ptB, ptC, (0, 255, 0), 2)
@@ -79,10 +75,9 @@ class DetectSignNode:
                 cv2.line(img, ptD, ptA, (0, 255, 0), 2)
                 cv2.putText(img, f"ID: {tag.tag_id}", (int(tag.center[0]), int(tag.center[1])), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
                 
-                if tag.tag_id in self.tag_rules and area > max_area and area > self.min_tag_area:
+                if tag.tag_id in self.tag_rules:
                     best_tag = tag
-                    max_area = area
-        
+
         # Wenn ein gültiger Tag rechts gefunden wurde, entscheide!
         if best_tag:
             self.current_tag_id = str(best_tag.tag_id)
@@ -100,16 +95,8 @@ class DetectSignNode:
         
         cv2.putText(img, f"ENTSCHEIDUNG: {self.current_decision.upper()}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
 
-        # Debugausgabe in eigenem Fenster - wenn Dashboard genutzt wird unnötig
-        #cv2.imshow("Sign Detection (Rechte Seite)", img)
-        #cv2.waitKey(1)
-
-        #Für Dashbord:
-        msg_out = CompressedImage()
-        msg_out.header.stamp = rospy.Time.now()
-        msg_out.format = "jpeg"
-        msg_out.data = np.array(cv2.imencode('.jpg', img)[1]).tobytes()
-        self.pub_debug_sign.publish(msg_out)
+        cv2.imshow("Sign Detection (Rechte Seite)", img)
+        cv2.waitKey(1)
 
     def run(self):
         rospy.spin()
