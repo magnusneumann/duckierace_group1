@@ -65,7 +65,7 @@ class DetectDucksNode:
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
         # Inferenz durchführen
-        results = self.model.predict(source=img, conf=0.5, verbose=False, imgsz=320)
+        results = self.model.predict(source=img, task="detect", conf=0.5, verbose=False, imgsz=320)
         obstacle_msg = Polygon()
 
         # ACHTUNG: Diese Punkte müssen mit den util-Parametern aus lane_node übereinstimmen!
@@ -79,24 +79,53 @@ class DetectDucksNode:
 
         M = cv2.getPerspectiveTransform(pts1,pts2)
         
+        # 1. Filtern: Die Ente finden, die am weitesten links ist
+        # 1. Filtern: Die Ente finden, die am weitesten links ist 
+        # ABER: Nur Enten beachten, die nah am Roboter sind!
+        leftmost_duck = None
+        min_x = float('inf')
+        
+        # TUNING WERT: Ab welchem Y-Pixel (von oben gezählt) ist die Ente nah genug?
+        # y=0 ist oben am Himmel, y=480 (oft Kamera-Max) ist direkt am Stoßfänger.
+        # Da dein Crop bei ca. 218 anfängt, nehmen wir hier 200 als Grenze.
+        y_threshold = 240 
+
         for box in results[0].boxes:
             if int(box.cls[0]) == self.duck_class_id:
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
-                w, h = x2 - x1, y2 - y1
-                orig_cx = float(x1 + w / 2)
-                orig_cy = float(y1 + h / 2)
                 
-                # Punkt in die Vogelperspektive transformieren
-                original_pt = np.array([[[orig_cx, orig_cy]]], dtype=np.float32)
-                warped_pt = cv2.perspectiveTransform(original_pt, M)
-                new_cx = float(warped_pt[0][0][0])
-                new_cy = float(warped_pt[0][0][1])
+                # NEU: Tiefen-Filter! Wir prüfen die untere Kante (y2) der Bounding Box.
+                # Ist die Ente weiter oben am Horizont als unser Threshold? Dann ignorieren!
+                if y2 < y_threshold:
+                    continue
                 
-                radius = float(max(w, h) / 2 + self.safety_margin)
-                obstacle_msg.points.append(Point32(x=new_cx, y=new_cy, z=radius))
-                
-                cv2.circle(img, (int(orig_cx), int(orig_cy)), int(radius), (0, 0, 255), -1)
-        
+                # Von den übrig gebliebenen Enten (nah dran) die linkeste suchen
+                if x1 < min_x:
+                    min_x = x1
+                    leftmost_duck = (x1, y1, x2, y2)
+        # 2. Dreieck berechnen (Spitze bei 400, 400)
+        # 2. Bounding Box in die Vogelperspektive transformieren
+        if leftmost_duck:
+            orig_x1, orig_y1, orig_x2, orig_y2 = leftmost_duck
+            
+            # Alle 4 Ecken der Box definieren (Oben-Links, Oben-Rechts, Unten-Rechts, Unten-Links)
+            pts_orig = np.array([
+                [[orig_x1, orig_y1]], 
+                [[orig_x2, orig_y1]], 
+                [[orig_x2, orig_y2]], 
+                [[orig_x1, orig_y2]]
+            ], dtype=np.float32)
+            
+            # Alle Punkte auf einen Schlag transformieren
+            warped_pts = cv2.perspectiveTransform(pts_orig, M)
+            
+            # Die 4 transformierten Punkte in unsere Message packen
+            for i in range(4):
+                p = Point32(x=int(warped_pts[i][0][0]), y=int(warped_pts[i][0][1]), z=0)
+                obstacle_msg.points.append(p)
+            
+            # Fürs Dashboard: Die originale Box einzeichnen
+            cv2.rectangle(img, (int(orig_x1), int(orig_y1)), (int(orig_x2), int(orig_y2)), (0, 0, 255), 2)
         self.pub_duck_obstacles.publish(obstacle_msg)
 
         # BILD AN DAS DASHBOARD SENDEN

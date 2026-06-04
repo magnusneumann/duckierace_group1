@@ -17,6 +17,7 @@ class DashboardNode:
             "lane": np.zeros((300, 300, 3), dtype=np.uint8),
             "white": np.zeros((300, 300, 3), dtype=np.uint8),
             "yellow": np.zeros((300, 300, 3), dtype=np.uint8),
+            "map": np.zeros((300, 300, 3), dtype=np.uint8),
             "red": np.zeros((300, 300, 3), dtype=np.uint8)
         }
 
@@ -26,6 +27,7 @@ class DashboardNode:
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_croped", CompressedImage, self.cb_img, callback_args="lane", queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_white", CompressedImage, self.cb_img, callback_args="white", queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_yellow", CompressedImage, self.cb_img, callback_args="yellow", queue_size=1)
+        rospy.Subscriber(f"/{self._vehicle_name}/debug/map", CompressedImage, self.cb_img, callback_args="map", queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_red", CompressedImage, self.cb_img, callback_args="red", queue_size=1)
 
         # 10 Hz Timer, der das Dashboard zeichnet
@@ -56,7 +58,7 @@ class DashboardNode:
         row1 = cv2.hconcat([labeled_imgs["duck"], labeled_imgs["sign"], labeled_imgs["lane"]])
         
         # Reihe 2 zusammenkleben
-        row2 = cv2.hconcat([labeled_imgs["white"], labeled_imgs["yellow"], labeled_imgs["red"]])
+        row2 = cv2.hconcat([labeled_imgs["white"], labeled_imgs["yellow"], labeled_imgs["map"]])
         
         # Alles vertikal zusammenkleben (V-Stack)
         dashboard = cv2.vconcat([row1, row2])

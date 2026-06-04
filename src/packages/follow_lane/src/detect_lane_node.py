@@ -11,44 +11,47 @@ import yaml
 import util
 from geometry_msgs.msg import Polygon
 
-#from duckietown.dtros import DTROS, NodeType
-
 class DetectLaneNode:
     def __init__(self, node_name):
-        # initialize the ROS node
+        # ROS-Knoten initialisieren
         rospy.init_node(node_name)
         self.duck_obstacles = None
-        
+        self.stop_cooldown = 0
         self._vehicle_name = os.environ['VEHICLE_NAME']
-        util.init_parameters(node_name,self.cbUpdateParameters)
+        util.init_parameters(node_name, self.cbUpdateParameters)
                 
         self._camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
-        self.sub_image_original = rospy.Subscriber(self._camera_topic, CompressedImage, self.cbFindLane, queue_size = 1)
-        self.pub_lane = rospy.Publisher(f'/{self._vehicle_name}/detect/lane', Float64, queue_size = 1)
+        
+        # OPTIMIERUNG: buff_size drastisch erhöht, um Kamera-Lag im ROS-Netzwerk zu verhindern
+        self.sub_image_original = rospy.Subscriber(
+            self._camera_topic, 
+            CompressedImage, 
+            self.cbFindLane, 
+            queue_size=1, 
+            buff_size=2**24
+        )
+        self.pub_lane = rospy.Publisher(f'/{self._vehicle_name}/detect/lane', Float64, queue_size=1)
 
         self._crop_im_size = 400
         self.is_running = False
         self.counter = 0
 
-        # init debug channels 
-        self.pub_debug_lane = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_croped',CompressedImage,queue_size=1)
-        self.pub_debug_white = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_white',CompressedImage,queue_size=1)
-        self.pub_debug_yellow = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_yellow',CompressedImage,queue_size=1)
+        # Debug-Kanäle initialisieren
+        self.pub_debug_lane = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_croped', CompressedImage, queue_size=1)
+        self.pub_debug_white = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_white', CompressedImage, queue_size=1)
+        self.pub_debug_yellow = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_yellow', CompressedImage, queue_size=1)
         self.pub_debug_red = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_red', CompressedImage, queue_size=1)
 
-
         self.pub_stopline = rospy.Publisher(f'/{self._vehicle_name}/detect/stopline', String, queue_size=1)
-        self.stop_cooldown = 0
-
-        #Hier werden die erkannten Enten als Polynom msg übernommen um sie in Masekn zu injezieren
         
+        # Übernahme der erkannten Enten als Polygon-Nachricht
         rospy.Subscriber(f"/{self._vehicle_name}/detect/duck_obstacles", Polygon, self.cb_duck_obstacles, queue_size=1)
     
     def cb_duck_obstacles(self, msg):
-            self.duck_obstacles = msg
+        self.duck_obstacles = msg
 
     def cbUpdateParameters(self, parameters):
-        # Update white line parameters
+        # Parameter für weiße Linie
         self.hue_white_l = parameters["white"]["hl"]["default"]
         self.hue_white_h = parameters["white"]["hh"]["default"]
         self.saturation_white_l = parameters["white"]["sl"]["default"]
@@ -56,7 +59,7 @@ class DetectLaneNode:
         self.lightness_white_l = parameters["white"]["vl"]["default"]
         self.lightness_white_h = parameters["white"]["vh"]["default"]
         
-        # Update yellow line parameters
+        # Parameter für gelbe Linie
         self.hue_yellow_l = parameters["yellow"]["hl"]["default"]
         self.hue_yellow_h = parameters["yellow"]["hh"]["default"]
         self.saturation_yellow_l = parameters["yellow"]["sl"]["default"]
@@ -64,7 +67,7 @@ class DetectLaneNode:
         self.lightness_yellow_l = parameters["yellow"]["vl"]["default"]
         self.lightness_yellow_h = parameters["yellow"]["vh"]["default"]
         
-        # Update perspective transform points
+        # Perspektiventransformations-Punkte
         self.top_left_x = parameters["crop_image"]["top_left_x"]["default"]
         self.top_left_y = parameters["crop_image"]["top_left_y"]["default"]
         self.top_right_x = parameters["crop_image"]["top_right_x"]["default"]
@@ -74,7 +77,7 @@ class DetectLaneNode:
         self.bottom_right_x = parameters["crop_image"]["bottom_right_x"]["default"]
         self.bottom_right_y = parameters["crop_image"]["bottom_right_y"]["default"]
 
-        # Update red line for stop
+        # Parameter für rote Stopplinie
         self.hue_red_l1 = parameters["red"]["hl1"]["default"]
         self.hue_red_h1 = parameters["red"]["hh1"]["default"]
         self.hue_red_l2 = parameters["red"]["hl2"]["default"]
@@ -85,24 +88,23 @@ class DetectLaneNode:
         self.lightness_red_h = parameters["red"]["vh"]["default"]
         self.red_pixel_threshold = parameters["red"]["threshold"]["default"]
 
-
     def detect_stopline(self, img):
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        # Zwei Masken wegen HSV-Umbruch bei Rot
+        # OPTIMIERUNG: Nur die unteren 30% ausschneiden BEVOR konvertiert und gefiltert wird
+        h = img.shape[0]
+        roi_bgr = img[int(h * 0.7):h, :]
+        
+        # Farbraumkonvertierung läuft jetzt blitzschnell auf der ROI
+        hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+        
         mask1 = cv2.inRange(hsv,
             (self.hue_red_l1, self.saturation_red_l, self.lightness_red_l),
             (self.hue_red_h1, self.saturation_red_h, self.lightness_red_h))
-        mask2   = cv2.inRange(hsv,
+        mask2 = cv2.inRange(hsv,
             (self.hue_red_l2, self.saturation_red_l, self.lightness_red_l),
             (self.hue_red_h2, self.saturation_red_h, self.lightness_red_h))
         mask_red = cv2.bitwise_or(mask1, mask2)
 
-        # Nur die unteren 10% der Kamera auswerten
-        h = mask_red.shape[0]
-        roi = mask_red[int(h * 0.70):h, :]
-
-        red_pixels = np.count_nonzero(roi)
-        rospy.loginfo(f"Rote Pixel im Suchbereich: {red_pixels}") #gitb Anz Pixels im Log aus
+        red_pixels = np.count_nonzero(mask_red)
 
         if self.stop_cooldown > 0:
             self.stop_cooldown -= 1
@@ -111,10 +113,10 @@ class DetectLaneNode:
         if red_pixels > self.red_pixel_threshold:
             rospy.loginfo(f"Stopline detected! ({red_pixels} px)")
             self.pub_stopline.publish(String(data="stop"))
-            self.stop_cooldown = 100  # ~4 Sekunden bei 10Hz, damit nicht mehrfach feuert
+            self.stop_cooldown = 100  # ~4 Sekunden Cooldown bei 10Hz
         return mask_red
   
-    def crop_img(self,img):
+    def crop_img(self, img):
         img = img.copy()
         
         pts1 = np.float32([
@@ -125,33 +127,34 @@ class DetectLaneNode:
         
         pts2 = np.float32([[0,0],[self._crop_im_size,0],[0,self._crop_im_size],[self._crop_im_size,self._crop_im_size]])
 
-        M = cv2.getPerspectiveTransform(pts1,pts2)
-        return cv2.warpPerspective(img,M,(self._crop_im_size,self._crop_im_size))
-
+        M = cv2.getPerspectiveTransform(pts1, pts2)
+        return cv2.warpPerspective(img, M, (self._crop_im_size, self._crop_im_size))
 
     def get_x_for_driving(self, mask, distance, no_lane_value, left_line):
-        grad = cv2.Sobel(mask, cv2.CV_16S, 1, 0, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
-        _,th1 = cv2.threshold(grad,127,255,cv2.THRESH_BINARY)
+        y_start = max(0, distance - 50)
+        y_end = min(mask.shape[0], distance + 50)
+        roi = mask[y_start:y_end, :]
 
-        a = []
-        for row in range(distance-50, distance+50):
-            if np.where(th1[row] == 255)[0].size == 0:
-                continue
-            else:
-                if left_line:
-                    a.append(np.where(th1[row] == 255)[0][-1])
-                else:
-                    a.append(np.where(th1[row] == 255)[0][0])
+        grad = cv2.Sobel(roi, cv2.CV_16S, 1, 0, ksize=3, scale=1, delta=0, borderType=cv2.BORDER_DEFAULT)
+        _, th1 = cv2.threshold(grad, 127, 255, cv2.THRESH_BINARY)
 
-        if len(a) > 10:
-            return np.median(a)
-        else:
+        row_max = th1.max(axis=1)
+        valid_rows = (row_max == 255)
+
+        if np.sum(valid_rows) < 10:
             return no_lane_value
-        
 
-    def cbFindLane(self, image_msg):
+        if left_line:
+            flipped_th1 = np.fliplr(th1)
+            first_max_flipped = flipped_th1.argmax(axis=1)
+            edge_x_values = mask.shape[1] - 1 - first_max_flipped[valid_rows]
+        else:
+            edge_x_values = th1.argmax(axis=1)[valid_rows]
+
+        return np.median(edge_x_values)
         
-        if self.counter  <= 3:
+    def cbFindLane(self, image_msg):
+        if self.counter <= 3:
             self.counter += 1   
             return
 
@@ -159,48 +162,62 @@ class DetectLaneNode:
             return
         
         self.is_running = True
-        self.conunter = 0
+        self.counter = 0 # OPTIMIERUNG: Tippfehler korrigiert (war vorher conunter)
 
         np_arr = np.frombuffer(image_msg.data, np.uint8)
         cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         self.debug_img_red = self.detect_stopline(cv_image)
+                
+        # --- HIER DIE ZWEI ZEILEN EINFÜGEN ---
+        cv2.imshow('Rote Maske (Stopplinie)', self.debug_img_red)
+        cv2.waitKey(1) # Wichtig, damit das Fenster aktualisiert und nicht einfriert
+        # -------------------------------------
+
+        img = self.crop_img(cv_image)
         img = self.crop_img(cv_image)
 
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
         mask_yellow = cv2.inRange(hsv, 
-                           (self.hue_yellow_l,self.saturation_yellow_l, self.lightness_yellow_l), 
-                           (self.hue_yellow_h,self.saturation_yellow_h, self.lightness_yellow_h),)
+                           (self.hue_yellow_l, self.saturation_yellow_l, self.lightness_yellow_l), 
+                           (self.hue_yellow_h, self.saturation_yellow_h, self.lightness_yellow_h),)
         
         mask_white = cv2.inRange(hsv, 
-                           (self.hue_white_l,self.saturation_white_l, self.lightness_white_l), 
-                           (self.hue_white_h,self.saturation_white_h, self.lightness_white_h),)
+                           (self.hue_white_l, self.saturation_white_l, self.lightness_white_l), 
+                           (self.hue_white_h, self.saturation_white_h, self.lightness_white_h),)
         
-        # --- MEHRERE ENTEN IN DIE MASKE INJIZIEREN ---
-        if self.duck_obstacles and len(self.duck_obstacles.points) > 0:
-            img_width = img.shape[1]
+        # --- ENTE: MASKEN MANIPULATION ---
+        if self.duck_obstacles and len(self.duck_obstacles.points) == 4:
+            tl = self.duck_obstacles.points[0] # Top-Left
+            tr = self.duck_obstacles.points[1] # Top-Right
+            br = self.duck_obstacles.points[2] # Bottom-Right
+            bl = self.duck_obstacles.points[3] # Bottom-Left
+
+            # 1. ADDITION (Weiß)
+            ramp_pts = np.array([
+                [int(tl.x)-50, 0],
+                [self._crop_im_size, 0],
+                [self._crop_im_size, self._crop_im_size],
+                [int(tl.x)-50, self._crop_im_size]], np.int32)
+            cv2.fillPoly(mask_white, [ramp_pts], 255)
             
-            # Wir iterieren über alle Enten im Array
-            for p in self.duck_obstacles.points:
-                cx = int(p.x)
-                cy = int(p.y)
-                radius = int(p.z)
-
-                if cx > (img_width / 2):
-                    cv2.circle(mask_white, (cx, cy), radius, 255, -1)
-                else:
-                    cv2.circle(mask_yellow, (cx, cy), radius, 255, -1)
-                    
-            # Nach dem Einzeichnen in DIESEM Frame die Liste wieder leeren.
-            # Im nächsten Frame kommt ohnehin das neue Array vom YOLO-Node.
-            #self.duck_obstacles = # einfach sich selbst überschreiben lassen, wenn neue daten kommen
+            # 2. SUBTRAKTION (Schwarz)
+            bb_pts = np.array([
+                [int(tl.x), int(tl.y)],
+                [int(tr.x), int(tr.y)],
+                [int(br.x), int(br.y)],
+                [int(bl.x), int(bl.y)]
+            ], np.int32)
+            cv2.fillPoly(mask_yellow, [bb_pts], 0)
+            cv2.circle(mask_yellow, (int(tl.x), int(tl.y)), 170, 0, -1)
         
-        white_alternative = int(len(img[0]) * 0.95)
-        yellow_alternative = int(len(img[0]) * 0.05)
+        white_alternative = int(len(img[0]) * 0.99)
+        yellow_alternative = int(len(img[0]) * 0.01)
 
-        center_white = self.get_x_for_driving(mask_white,int(len(img)*0.75), white_alternative, left_line=False)
-        center_yellow = self.get_x_for_driving(mask_yellow,int(len(img)*0.75), yellow_alternative, left_line=False)
+        self.lookahead = 0.75
 
+        center_white = self.get_x_for_driving(mask_white, int(len(img)*self.lookahead), white_alternative, left_line=False)
+        center_yellow = self.get_x_for_driving(mask_yellow, int(len(img)*self.lookahead), yellow_alternative, left_line=False)
 
         if center_white <= center_yellow:
             if center_white > int(len(img[0]) * 0.4):
@@ -208,17 +225,17 @@ class DetectLaneNode:
             else:
                 center_white = white_alternative
 
-        
         lane_center = (center_white + center_yellow) / 2
 
         msg_error = Float64()
-        msg_error.data = 1-(lane_center / len(img) * 2)
+        msg_error.data = 1 - (lane_center / len(img) * 2)
 
         self.pub_lane.publish(msg_error)
-        print(f"Lane error: {msg_error.data} range [-1,1]")
+        
+        # OPTIMIERUNG: Blockierendes print() durch gedrosseltes rospy-Logging ersetzt (loggt max. 1x pro Sekunde)
+        rospy.loginfo_throttle(1.0, f"Lane error: {msg_error.data:.4f} range [-1,1]")
 
-
-        # saving for debug
+        # Daten für Debug-Thread sichern
         self.img = img
         self.lane_center = lane_center
         self.white_alternative = white_alternative
@@ -229,25 +246,7 @@ class DetectLaneNode:
         self.debug_img_white = mask_white
         self.debug_img_yellow = mask_yellow
 
-        
-        image = cv2.circle(img,(int(lane_center),int(len(img) / 2)),3,(255,0,0))
-        image = cv2.line(image, (white_alternative , 0), (white_alternative , self._crop_im_size) ,color=(255,255,255)) 
-        image = cv2.line(image, (yellow_alternative , 0), (yellow_alternative , self._crop_im_size) ,color=(255,255,0))
-        image = cv2.line(image, (0,int(len(img) * 0.75) + 100) , (len(img[0]),int(len(img) * 0.75) + 100), color=(255,255,255) )
-        image = cv2.line(image, (0,int(len(img) * 0.75) - 100) , (len(img[0]),int(len(img) * 0.75) - 100), color=(255,255,255))
-
-        image = cv2.line(image,(int(len(img[0])/2),0),(int(len(img[0])/2),len(image)),(0,255,0))
-        image = cv2.circle(image, (int(center_white), int(len(img) * 0.75)),  5,(255,255,255))
-        image = cv2.circle(image, (int(center_yellow), int(len(img) * 0.75)), 5,(0,255,255))
-
-
-        
-        #cv2.imshow('lane detection', image)
         self.is_running = False
-        
-        #cv2.imshow('white', mask_white)
-        #cv2.imshow('yellow', mask_yellow)
-        #cv2.waitKey(1)
             
     def run_debug(self):
         rate = rospy.Rate(10)
@@ -255,19 +254,18 @@ class DetectLaneNode:
             if not hasattr(self, 'img'):
                 rate.sleep()
                 continue
-            # add debug info to lane image
+            
+            # Debug-Bilder erzeugen und publishen, wenn Subscriber zuhören
             if self.pub_debug_lane.get_num_connections() > 0:
                 debug_img = self.img.copy()
-                debug_img = cv2.circle(debug_img,(int(self.lane_center),int(len(debug_img) / 2)),3,(255,0,0))
-
-                debug_img = cv2.line(debug_img, (self.white_alternative , 0), (self.white_alternative , 1000) ,color=(255,255,255)) 
-                debug_img = cv2.line(debug_img, (self.yellow_alternative , 0), (self.yellow_alternative , 1000) ,color=(255,255,0))
-                debug_img = cv2.line(debug_img, (0,int(len(debug_img) * 0.75) + 100) , (len(debug_img[0]),int(len(debug_img) * 0.75) + 100), color=(255,255,255) )
-                debug_img = cv2.line(debug_img, (0,int(len(debug_img) * 0.75) - 100) , (len(debug_img[0]),int(len(debug_img) * 0.75) - 100), color=(255,255,255))
-
-                debug_img = cv2.line(debug_img,(int(len(debug_img[0])/2),0),(int(len(debug_img[0])/2),len(debug_img)),(0,255,0))
-                debug_img = cv2.circle(debug_img, (int(self.center_white), int(len(debug_img) * 0.75)),  5,(255,255,255))
-                debug_img = cv2.circle(debug_img, (int(self.center_yellow), int(len(debug_img) * 0.75)), 5,(0,255,255))
+                debug_img = cv2.circle(debug_img, (int(self.lane_center), int(len(debug_img) / 2)), 3, (255,0,0))
+                debug_img = cv2.line(debug_img, (self.white_alternative, 0), (self.white_alternative, 1000), color=(255,255,255)) 
+                debug_img = cv2.line(debug_img, (self.yellow_alternative, 0), (self.yellow_alternative, 1000), color=(255,255,0))
+                debug_img = cv2.line(debug_img, (0, int(len(debug_img) * self.lookahead) + 100), (len(debug_img[0]), int(len(debug_img) * self.lookahead) + 100), color=(255,255,255))
+                debug_img = cv2.line(debug_img, (0, int(len(debug_img) * self.lookahead) - 100), (len(debug_img[0]), int(len(debug_img) * self.lookahead) - 100), color=(255,255,255))
+                debug_img = cv2.line(debug_img, (int(len(debug_img[0])/2), 0), (int(len(debug_img[0])/2), len(debug_img)), (0,255,0))
+                debug_img = cv2.circle(debug_img, (int(self.center_white), int(len(debug_img) * self.lookahead)), 5, (255,255,255))
+                debug_img = cv2.circle(debug_img, (int(self.center_yellow), int(len(debug_img) * self.lookahead)), 5, (0,255,255))
 
                 debug_msg = CompressedImage()
                 debug_msg.header.stamp = rospy.Time.now()
