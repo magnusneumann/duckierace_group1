@@ -27,8 +27,8 @@ class DetectLaneNode:
             self._camera_topic, 
             CompressedImage, 
             self.cbFindLane, 
-            queue_size=1, 
-            buff_size=2**24
+            queue_size=1 
+            #buff_size=2**24
         )
         self.pub_lane = rospy.Publisher(f'/{self._vehicle_name}/detect/lane', Float64, queue_size=1)
 
@@ -45,10 +45,10 @@ class DetectLaneNode:
         self.pub_stopline = rospy.Publisher(f'/{self._vehicle_name}/detect/stopline', String, queue_size=1)
         
         # Übernahme der erkannten Enten als Polygon-Nachricht
-        rospy.Subscriber(f"/{self._vehicle_name}/detect/duck_obstacles", Polygon, self.cb_duck_obstacles, queue_size=1)
+        #rospy.Subscriber(f"/{self._vehicle_name}/detect/duck_obstacles", Polygon, self.cb_duck_obstacles, queue_size=1)
     
-    def cb_duck_obstacles(self, msg):
-        self.duck_obstacles = msg
+    #def cb_duck_obstacles(self, msg):
+    #    self.duck_obstacles = msg
 
     def cbUpdateParameters(self, parameters):
         # Parameter für weiße Linie
@@ -117,7 +117,6 @@ class DetectLaneNode:
         return mask_red
   
     def crop_img(self, img):
-        img = img.copy()
         
         pts1 = np.float32([
             [self.top_left_x,     self.top_left_y],
@@ -169,7 +168,6 @@ class DetectLaneNode:
         self.debug_img_red = self.detect_stopline(cv_image)
                 
         img = self.crop_img(cv_image)
-        img = self.crop_img(cv_image)
 
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
@@ -182,29 +180,29 @@ class DetectLaneNode:
                            (self.hue_white_h, self.saturation_white_h, self.lightness_white_h),)
         
         # --- ENTE: MASKEN MANIPULATION ---
-        if self.duck_obstacles and len(self.duck_obstacles.points) == 4:
-            tl = self.duck_obstacles.points[0] # Top-Left
-            tr = self.duck_obstacles.points[1] # Top-Right
-            br = self.duck_obstacles.points[2] # Bottom-Right
-            bl = self.duck_obstacles.points[3] # Bottom-Left
+        #if self.duck_obstacles and len(self.duck_obstacles.points) == 4:
+        #    tl = self.duck_obstacles.points[0] # Top-Left
+        #    tr = self.duck_obstacles.points[1] # Top-Right
+        #    br = self.duck_obstacles.points[2] # Bottom-Right
+        #    bl = self.duck_obstacles.points[3] # Bottom-Left#
 
-            # 1. ADDITION (Weiß)
-            ramp_pts = np.array([
-                [int(tl.x)-50, 0],
-                [self._crop_im_size, 0],
-                [self._crop_im_size, self._crop_im_size],
-                [int(tl.x)-50, self._crop_im_size]], np.int32)
-            cv2.fillPoly(mask_white, [ramp_pts], 255)
-            
-            # 2. SUBTRAKTION (Schwarz)
-            bb_pts = np.array([
-                [int(tl.x), int(tl.y)],
-                [int(tr.x), int(tr.y)],
-                [int(br.x), int(br.y)],
-                [int(bl.x), int(bl.y)]
-            ], np.int32)
-            cv2.fillPoly(mask_yellow, [bb_pts], 0)
-            cv2.circle(mask_yellow, (int(tl.x), int(tl.y)), 170, 0, -1)
+        #    # 1. ADDITION (Weiß)
+        #    ramp_pts = np.array([
+        #        [int(tl.x)-50, 0],
+        #        [self._crop_im_size, 0],
+        #        [self._crop_im_size, self._crop_im_size],
+        #        [int(tl.x)-50, self._crop_im_size]], np.int32)
+        #    cv2.fillPoly(mask_white, [ramp_pts], 255)
+        #    
+        #    # 2. SUBTRAKTION (Schwarz)
+        #    bb_pts = np.array([
+        #        [int(tl.x), int(tl.y)],
+        #        [int(tr.x), int(tr.y)],
+        #        [int(br.x), int(br.y)],
+        #        [int(bl.x), int(bl.y)]
+        #    ], np.int32)
+        #    cv2.fillPoly(mask_yellow, [bb_pts], 0)
+        #    cv2.circle(mask_yellow, (int(tl.x), int(tl.y)), 170, 0, -1)
         
         white_alternative = int(len(img[0]) * 0.99)
         yellow_alternative = int(len(img[0]) * 0.01)
@@ -262,10 +260,10 @@ class DetectLaneNode:
             debug_img = cv2.circle(debug_img, (int(self.center_yellow), int(len(debug_img) * self.lookahead)), 5, (0,255,255))
 
             # 2. Bilder direkt in Fenstern anzeigen
-            #cv2.imshow(f'{self._vehicle_name} - Lane Center', debug_img)
+            cv2.imshow(f'{self._vehicle_name} - Lane Center', debug_img)
             #cv2.imshow(f'{self._vehicle_name} - Mask White', self.debug_img_white)
             #cv2.imshow(f'{self._vehicle_name} - Mask Yellow', self.debug_img_yellow)
-            cv2.imshow(f'{self._vehicle_name} - Mask Red', self.debug_img_red)
+            #cv2.imshow(f'{self._vehicle_name} - Mask Red', self.debug_img_red)
 
             # 3. Zwingend notwendig: Events verarbeiten lassen
             cv2.waitKey(1) 

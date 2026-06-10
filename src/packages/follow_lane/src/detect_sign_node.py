@@ -29,8 +29,8 @@ class DetectSignNode:
         
         self.current_decision = "straight"
         self.current_tag_id = "None"
-        self.min_tag_area = 800  # TUNING WERT: Mindestgröße in Pixeln
-
+        self.min_tag_area = 600  # TUNING WERT: Mindestgröße in Pixeln
+        self.frame_counter = 0
         # Wir bauen für jede Familie einen eigenen Detektor auf
         self.detector_36h11 = Detector(
             families='tag36h11', 
@@ -50,6 +50,14 @@ class DetectSignNode:
         rospy.Subscriber(camera_topic, CompressedImage, self.cb_image, queue_size=1, buff_size=2**24)
 
     def cb_image(self, msg):
+                # Nur jedes 5. Bild für Schilder auswerten (spart ~80% CPU für diesen Knoten)
+        if self.frame_counter <= 2:
+            self.frame_counter += 1
+            return
+        self.frame_counter = 0
+        
+        np_arr = np.frombuffer(msg.data, np.uint8)
+        # ... Rest des Codes ...
         np_arr = np.frombuffer(msg.data, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
