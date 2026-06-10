@@ -37,9 +37,9 @@ class CrossIntersectionNode:
             self.drive(v=0.2, omega=0.1, duration=2.1)
         elif decision == "right":
             # 1. Kurz geradeaus in die Kreuzung
-            self.drive(v=0.2, omega=0.2, duration=1.1)
+            self.drive(v=0.2, omega=0.2, duration=1.2)
             # 2. Hart rechts lenken
-            self.drive(v=0.13, omega=-3.1, duration=0.5) #vorher 3.2
+            self.drive(v=0.13, omega=-3.0, duration=0.4) #vorher 3.2
             # 3. Kurz geradeaus aus der Kreuzung raus
             #self.drive(v=0.2, omega=0.1, duration=0.5)
             
