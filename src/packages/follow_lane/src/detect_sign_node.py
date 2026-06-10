@@ -51,7 +51,7 @@ class DetectSignNode:
 
     def cb_image(self, msg):
                 # Nur jedes 5. Bild für Schilder auswerten (spart ~80% CPU für diesen Knoten)
-        if self.frame_counter <= 2:
+        if self.frame_counter <= 1:
             self.frame_counter += 1
             return
         self.frame_counter = 0
