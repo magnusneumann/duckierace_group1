@@ -44,7 +44,7 @@ class DetectSignNode:
             quad_decimate=1.0
         )
         # Topics
-        self.pub_debug_sign = rospy.Publisher(f"/{self._vehicle_name}/debug/sign", CompressedImage, queue_size=1)
+        #self.pub_debug_sign = rospy.Publisher(f"/{self._vehicle_name}/debug/sign", CompressedImage, queue_size=1)
         camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
         self.pub_decision = rospy.Publisher(f"/{self._vehicle_name}/intersection/turn_decision", String, queue_size=1)
         rospy.Subscriber(camera_topic, CompressedImage, self.cb_image, queue_size=1, buff_size=2**24)
@@ -101,15 +101,15 @@ class DetectSignNode:
         cv2.putText(img, f"ENTSCHEIDUNG: {self.current_decision.upper()}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
 
         # Debugausgabe in eigenem Fenster - wenn Dashboard genutzt wird unnötig
-        #cv2.imshow("Sign Detection (Rechte Seite)", img)
-        #cv2.waitKey(1)
+        cv2.imshow("Sign Detection (Rechte Seite)", img)
+        cv2.waitKey(1)
 
         #Für Dashbord:
-        msg_out = CompressedImage()
-        msg_out.header.stamp = rospy.Time.now()
-        msg_out.format = "jpeg"
-        msg_out.data = np.array(cv2.imencode('.jpg', img)[1]).tobytes()
-        self.pub_debug_sign.publish(msg_out)
+        #msg_out = CompressedImage()
+        #msg_out.header.stamp = rospy.Time.now()
+        #msg_out.format = "jpeg"
+        #msg_out.data = np.array(cv2.imencode('.jpg', img)[1]).tobytes()
+        #self.pub_debug_sign.publish(msg_out)
 
     def run(self):
         rospy.spin()

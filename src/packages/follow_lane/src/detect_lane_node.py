@@ -37,11 +37,11 @@ class DetectLaneNode:
         self.counter = 0
 
         # Debug-Kanäle initialisieren
-        self.pub_debug_lane = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_croped', CompressedImage, queue_size=1)
-        self.pub_debug_white = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_white', CompressedImage, queue_size=1)
-        self.pub_debug_yellow = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_yellow', CompressedImage, queue_size=1)
-        self.pub_debug_red = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_red', CompressedImage, queue_size=1)
-
+        #self.pub_debug_lane = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_croped', CompressedImage, queue_size=1)
+        #self.pub_debug_white = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_white', CompressedImage, queue_size=1)
+        #self.pub_debug_yellow = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_yellow', CompressedImage, queue_size=1)
+        #self.pub_debug_red = rospy.Publisher(f'/{self._vehicle_name}/debug/lane_red', CompressedImage, queue_size=1)
+#
         self.pub_stopline = rospy.Publisher(f'/{self._vehicle_name}/detect/stopline', String, queue_size=1)
         
         # Übernahme der erkannten Enten als Polygon-Nachricht
@@ -106,14 +106,14 @@ class DetectLaneNode:
 
         red_pixels = np.count_nonzero(mask_red)
 
-        if self.stop_cooldown > 0:
-            self.stop_cooldown -= 1
-            return mask_red
+        #if self.stop_cooldown > 0:
+        #    self.stop_cooldown -= 1
+        #    return mask_red
 
         if red_pixels > self.red_pixel_threshold:
             rospy.loginfo(f"Stopline detected! ({red_pixels} px)")
             self.pub_stopline.publish(String(data="stop"))
-            self.stop_cooldown = 100  # ~4 Sekunden Cooldown bei 10Hz
+            #self.stop_cooldown = 30  # ~4 Sekunden Cooldown bei 10Hz
         return mask_red
   
     def crop_img(self, img):
@@ -168,11 +168,6 @@ class DetectLaneNode:
         cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         self.debug_img_red = self.detect_stopline(cv_image)
                 
-        # --- HIER DIE ZWEI ZEILEN EINFÜGEN ---
-        cv2.imshow('Rote Maske (Stopplinie)', self.debug_img_red)
-        cv2.waitKey(1) # Wichtig, damit das Fenster aktualisiert und nicht einfriert
-        # -------------------------------------
-
         img = self.crop_img(cv_image)
         img = self.crop_img(cv_image)
 
@@ -255,44 +250,25 @@ class DetectLaneNode:
                 rate.sleep()
                 continue
             
-            # Debug-Bilder erzeugen und publishen, wenn Subscriber zuhören
-            if self.pub_debug_lane.get_num_connections() > 0:
-                debug_img = self.img.copy()
-                debug_img = cv2.circle(debug_img, (int(self.lane_center), int(len(debug_img) / 2)), 3, (255,0,0))
-                debug_img = cv2.line(debug_img, (self.white_alternative, 0), (self.white_alternative, 1000), color=(255,255,255)) 
-                debug_img = cv2.line(debug_img, (self.yellow_alternative, 0), (self.yellow_alternative, 1000), color=(255,255,0))
-                debug_img = cv2.line(debug_img, (0, int(len(debug_img) * self.lookahead) + 100), (len(debug_img[0]), int(len(debug_img) * self.lookahead) + 100), color=(255,255,255))
-                debug_img = cv2.line(debug_img, (0, int(len(debug_img) * self.lookahead) - 100), (len(debug_img[0]), int(len(debug_img) * self.lookahead) - 100), color=(255,255,255))
-                debug_img = cv2.line(debug_img, (int(len(debug_img[0])/2), 0), (int(len(debug_img[0])/2), len(debug_img)), (0,255,0))
-                debug_img = cv2.circle(debug_img, (int(self.center_white), int(len(debug_img) * self.lookahead)), 5, (255,255,255))
-                debug_img = cv2.circle(debug_img, (int(self.center_yellow), int(len(debug_img) * self.lookahead)), 5, (0,255,255))
+            # 1. Haupt-Debug-Bild zeichnen (ohne Encoding!)
+            debug_img = self.img.copy()
+            debug_img = cv2.circle(debug_img, (int(self.lane_center), int(len(debug_img) / 2)), 3, (255,0,0))
+            debug_img = cv2.line(debug_img, (self.white_alternative, 0), (self.white_alternative, 1000), color=(255,255,255)) 
+            debug_img = cv2.line(debug_img, (self.yellow_alternative, 0), (self.yellow_alternative, 1000), color=(255,255,0))
+            debug_img = cv2.line(debug_img, (0, int(len(debug_img) * self.lookahead) + 100), (len(debug_img[0]), int(len(debug_img) * self.lookahead) + 100), color=(255,255,255))
+            debug_img = cv2.line(debug_img, (0, int(len(debug_img) * self.lookahead) - 100), (len(debug_img[0]), int(len(debug_img) * self.lookahead) - 100), color=(255,255,255))
+            debug_img = cv2.line(debug_img, (int(len(debug_img[0])/2), 0), (int(len(debug_img[0])/2), len(debug_img)), (0,255,0))
+            debug_img = cv2.circle(debug_img, (int(self.center_white), int(len(debug_img) * self.lookahead)), 5, (255,255,255))
+            debug_img = cv2.circle(debug_img, (int(self.center_yellow), int(len(debug_img) * self.lookahead)), 5, (0,255,255))
 
-                debug_msg = CompressedImage()
-                debug_msg.header.stamp = rospy.Time.now()
-                debug_msg.format = "jpeg"
-                debug_msg.data = np.array(cv2.imencode('.jpg', debug_img)[1]).tobytes()
-                self.pub_debug_lane.publish(debug_msg)
+            # 2. Bilder direkt in Fenstern anzeigen
+            #cv2.imshow(f'{self._vehicle_name} - Lane Center', debug_img)
+            #cv2.imshow(f'{self._vehicle_name} - Mask White', self.debug_img_white)
+            #cv2.imshow(f'{self._vehicle_name} - Mask Yellow', self.debug_img_yellow)
+            cv2.imshow(f'{self._vehicle_name} - Mask Red', self.debug_img_red)
 
-            if self.pub_debug_white.get_num_connections() > 0:
-                debug_msg = CompressedImage()
-                debug_msg.header.stamp = rospy.Time.now()
-                debug_msg.format = "jpeg"
-                debug_msg.data = np.array(cv2.imencode('.jpg', self.debug_img_white)[1]).tobytes()
-                self.pub_debug_white.publish(debug_msg)
-
-            if self.pub_debug_yellow.get_num_connections() > 0:
-                debug_msg = CompressedImage()
-                debug_msg.header.stamp = rospy.Time.now()
-                debug_msg.format = "jpeg"
-                debug_msg.data = np.array(cv2.imencode('.jpg', self.debug_img_yellow)[1]).tobytes()
-                self.pub_debug_yellow.publish(debug_msg)
-
-            if self.pub_debug_red.get_num_connections() > 0:
-                debug_msg = CompressedImage()
-                debug_msg.header.stamp = rospy.Time.now()
-                debug_msg.format = "jpeg"
-                debug_msg.data = np.array(cv2.imencode('.jpg', self.debug_img_red)[1]).tobytes()
-                self.pub_debug_red.publish(debug_msg)
+            # 3. Zwingend notwendig: Events verarbeiten lassen
+            cv2.waitKey(1) 
 
             rate.sleep()
         

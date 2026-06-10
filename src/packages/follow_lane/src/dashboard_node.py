@@ -27,8 +27,8 @@ class DashboardNode:
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_croped", CompressedImage, self.cb_img, callback_args="lane", queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_white", CompressedImage, self.cb_img, callback_args="white", queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_yellow", CompressedImage, self.cb_img, callback_args="yellow", queue_size=1)
-        rospy.Subscriber(f"/{self._vehicle_name}/debug/map", CompressedImage, self.cb_img, callback_args="map", queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/debug/lane_red", CompressedImage, self.cb_img, callback_args="red", queue_size=1)
+        rospy.Subscriber(f"/{self._vehicle_name}/debug/map", CompressedImage, self.cb_img, callback_args="map", queue_size=1)
 
         # 10 Hz Timer, der das Dashboard zeichnet
         rospy.Timer(rospy.Duration(0.1), self.draw_dashboard)
