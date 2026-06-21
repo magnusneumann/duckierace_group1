@@ -15,5 +15,8 @@ STRG + B, Pfeiltaste
 Docker darf GUI's öffnen:
 xhost +local:root im gobalen Terminal
 
+ChArUco kalibrierung während der charuco_calibration_node läuft:
+rosservice call /VEHICLENAME/calibration/save_homography
+
 
 

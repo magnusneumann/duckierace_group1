@@ -1,0 +1,18 @@
+{
+  "charuco": {
+    "squares_x": 11,
+    "squares_y": 7,
+    "square_size_m": 0.025,
+    "marker_size_m": 0.0175,
+    "dictionary": "DICT_4X4_50"
+  },
+  "transformation": {
+    "board_x_maps_to_robot": "-Y",
+    "board_y_maps_to_robot": "X",
+    "offset_x_m": 0.142,
+    "offset_y_m": 0.135
+  },
+  "output": {
+    "yaml_path": "/root/DuckieRace/src/packages/avoid_ducks/config/homography.yaml"
+  }
+}
