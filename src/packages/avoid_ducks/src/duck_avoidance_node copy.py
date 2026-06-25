@@ -346,63 +346,51 @@ class DuckAvoidanceNode:
             # --- HILFSFUNKTION: Größte Ente analysieren ---
             duck_center_x = IMAGE_CENTER_X
             if self.duck_bboxes:
-                # Finde Bounding Box mit maximaler Fläche: (x2-x1)*(y2-y1)
                 largest_duck = max(self.duck_bboxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
                 duck_center_x = (largest_duck[0] + largest_duck[2]) / 2.0
 
-            # --- REGELUNG für ZONE 0 ---
+            # ==========================================================
+            # PHASE 1: ZUSTANDS-WECHSEL (Entscheidungen treffen)
+            # ==========================================================
+            
+            # Trigger A: Linie in Zone 0
             if z0["white"] or z0["yellow"]:
                 if self.state != "ROTATING":
                     rospy.loginfo("Wegen Linie in Zone 0. Rotieren")
                     self.state = "ROTATING"
                     self.rotation_reason = "line"
-                    if z0["white"]:
-                        self.escape_direction = 1.0
-                        rospy.loginfo("Rotation nach links")
-                    else:
-                        self.escape_direction = -1.0
-                        rospy.loginfo("Rotation nach rechts")
-                cmd.v = 0.0
-                cmd.omega = 1.3 * self.escape_direction  # Auf 1.3 erhöht, 1.1 verhungert oft in den Motoren!
-
-            # REGELUNG für ZONE 1
+                    self.escape_direction = 1.0 if z0["white"] else -1.0
+                    
+            # Trigger B: Ente in Zone 1
             elif z1["duck"]:
                 if self.state != "ROTATING":
-                    rospy.loginfo("Freien Fahrkorridor finden.")
+                    rospy.loginfo("Ente in Z1! Freien Fahrkorridor finden.")
                     self.state = "ROTATING"
                     self.rotation_reason = "duck"
-                    
-                    if duck_center_x < IMAGE_CENTER_X:
-                        self.escape_direction = -1.0
-                        rospy.loginfo("Ente ist links, drehen nach rechts")
-                    else:
-                        self.escape_direction = 1.0
-                        rospy.loginfo("Ente ist rechts, drehen nach links")
-                
-                cmd.v = 0.0
-                cmd.omega = 1.3 * self.escape_direction
+                    self.escape_direction = -1.0 if duck_center_x < IMAGE_CENTER_X else 1.0
 
-            # Sobald Zone 1 & 2 entenfrei sind, verlassen wir das Rotieren wieder
+            # Trigger C: Abbruch der Rotation (Alles frei)
             elif self.state == "ROTATING" and not z1["duck"] and not z2["duck"] and not z2["yellow"] and not z2["white"]:
                 if self.rotation_reason == "duck":
                     rospy.loginfo("Korridor frei. An Ente vorbei fahren.")
                     self._drive_target_distance = 0.15
                     self._drive_start_pose = (self.x, self.y)
                     self.state = "DRIVE_FORWARD_DISTANCE"
-                    cmd.v = self._drive_speed
-                    cmd.omega = 0.0
                 else:
-                    rospy.loginfo("Linienrotation abgeschlossen.")
+                    rospy.loginfo("Linienrotation abgeschlossen. Weiter DRIVING.")
                     self.state = "DRIVING"
 
-            # ================================================================
-            # --- DER NEUE BLOCK: "FALL-THROUGH" STOPFEN ---
-            # ================================================================
-            elif self.state == "ROTATING":
-                # Wir dürfen nicht abbrechen (Z2 noch blockiert), also weiterdrehen!
+
+            # ==========================================================
+            # PHASE 2: MOTOR-AKTIONEN (Ausführen, was der Zustand sagt)
+            # WICHTIG: Das hier sind NEUE 'if'-Blöcke, keine 'elif' mehr!
+            # ==========================================================
+            
+            if self.state == "ROTATING":
                 cmd.v = 0.0
                 
-                # INVERTIERUNGS-LOGIK (Greift jetzt, um Z2 freizuräumen)
+                # INVERTIERUNGS-SCHUTZ: Läuft jetzt JEDEN Frame, 
+                # egal ob die Ente noch in Zone 1 ist oder nicht!
                 current_time = rospy.get_time()
                 if (current_time - self.last_inversion_time) > 0.6: 
                     if self.escape_direction == 1.0 and z2["yellow"]:
@@ -416,13 +404,9 @@ class DuckAvoidanceNode:
                         self.last_inversion_time = current_time
 
                 cmd.omega = 1.3 * self.escape_direction
-            # ================================================================
 
-            # ==========================================
-            # DRIVING STATE LOGIK (ZONE 2 & 3)
-            # ==========================================
             elif self.state == "DRIVING":
-                # steer in Zone 1 if white OR yellow detected and NO duck present
+                # Spurkorrektur in Zone 1
                 if (z1["white"] or z1["yellow"]) and not z1["duck"]:
                     cmd.v = 0.15
                     if z1["white"]:
@@ -430,7 +414,7 @@ class DuckAvoidanceNode:
                     elif z1["yellow"]:
                         cmd.omega = -2.7
                 
-                # --- ZONE 2: WARNUNG ---
+                # Zone 2: Drosseln und Ausweichen
                 elif z2["duck"]:
                     cmd.v = 0.1 
                     if z2["white"]:
@@ -446,8 +430,7 @@ class DuckAvoidanceNode:
                     cmd.v = 0.12 
                     cmd.omega = 0.0
 
-            # --- DRIVE-FOR-DISTANCE state handling (top-level) ---
-            if self.state == "DRIVE_FORWARD_DISTANCE":
+            elif self.state == "DRIVE_FORWARD_DISTANCE":
                 if self._drive_start_pose is None:
                     self._drive_start_pose = (self.x, self.y)
                 cmd.v = self._drive_speed
@@ -458,7 +441,7 @@ class DuckAvoidanceNode:
                     dy = self.y - self._drive_start_pose[1]
                     traveled = math.hypot(dx, dy)
                     if traveled >= self._drive_target_distance:
-                        rospy.loginfo(f"Drive target reached ({traveled:.3f} m). Resuming normal driving.")
+                        rospy.loginfo(f"Drive target reached ({traveled:.3f} m).")
                         self._drive_target_distance = None
                         self._drive_start_pose = None
                         self.state = "DRIVING"
