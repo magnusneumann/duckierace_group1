@@ -54,6 +54,7 @@ class DuckAvoidanceNode:
         self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(3)] # Status für Zone 1, 2, 3
         self.duck_bboxes = [] # Eingehende Enten [(x1,y1,x2,y2), ...]
         self.display_image = None
+        self.z2_omega = 1.3
         # --- ROS INTERFACES ---
         self.pub_cmd = rospy.Publisher(f"/{self._v}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
         self.pub_debug = rospy.Publisher(f"/{self._v}/debug/avoidance_view/compressed", CompressedImage, queue_size=1)
@@ -122,9 +123,9 @@ class DuckAvoidanceNode:
         # Zonen in echten Metern (X = Vorne, Y = Links/Rechts)
         # 15cm lang, 20cm breit (-0.1 bis 0.1)
         zones_3d = [
-            [(0.05, -0.075), (0.15, -0.075), (0.15, 0.075), (0.05, 0.075)], # Zone 1
-            [(0.15, -0.075), (0.30, -0.075), (0.30, 0.075), (0.15, 0.075)], # Zone 2
-            [(0.30, -0.075), (0.45, -0.075), (0.45, 0.075), (0.30, 0.075)]  # Zone 3
+            [(0.05, -0.075), (0.18, -0.075), (0.18, 0.075), (0.05, 0.075)], # Zone 1
+            [(0.18, -0.075), (0.32, -0.075), (0.32, 0.075), (0.18, 0.075)], # Zone 2
+            [(0.32, -0.075), (0.45, -0.075), (0.45, 0.075), (0.32, 0.075)]  # Zone 3
         ]
 
         for z in zones_3d:
@@ -268,8 +269,11 @@ class DuckAvoidanceNode:
     # ==========================================
     def run(self):
         rate = rospy.Rate(10)
+        # Wir gehen von einer Standard-Bildbreite von ca. 640px aus (Mitte = 320)
+        # Falls dein Bild gecroppt ist, passe die 320 entsprechend an.
+        IMAGE_CENTER_X = 320 
+
         while not rospy.is_shutdown():
-            
             if self.display_image is not None:
                 cv2.imshow("Avoidance Debug View", self.display_image)
             cv2.waitKey(1)
@@ -281,57 +285,105 @@ class DuckAvoidanceNode:
             z2 = self.zones_status[1]
             z3 = self.zones_status[2]
 
-            # --- PRIORITÄT 1: ZONE 1 (KRITISCH - STOP & ROTATE) ---
-            if z1["white"] or z1["yellow"] or z1["duck"]:
+            # --- HILFSFUNKTION: Größte Ente analysieren ---
+            duck_center_x = IMAGE_CENTER_X # Default
+            if self.duck_bboxes:
+                # Finde Bounding Box mit maximaler Fläche: (x2-x1)*(y2-y1)
+                largest_duck = max(self.duck_bboxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
+                duck_center_x = (largest_duck[0] + largest_duck[2]) / 2.0
+
+            # ==========================================
+            # ZONE 1: KRITISCH (ENTE) -> STOP & ROTATE
+            # ==========================================
+            if z1["duck"]:
                 if self.state != "ROTATING":
-                    rospy.loginfo("Zone 1 blockiert! Not-Rotation.")
-                    self.start_theta = self.theta
+                    rospy.loginfo("NOTFALL! Ente in Zone 1. Stoppe und rotiere.")
                     self.state = "ROTATING"
-                
-                cmd.v = 0.01
-                # Drehrichtung bestimmen: Weiß ist rechts -> drehe links (+). Gelb ist links -> drehe rechts (-)
-                if z1["white"]: 
-                    cmd.omega = 0.1
-                elif z1["yellow"]: 
-                    cmd.omega = -0.1
-                elif z1["duck"]: 
-                    # Default Ausweichrichtung für Enten (z.B. immer tendenziell links vorbei)
-                    cmd.omega = 2.0
+                    
+                    # Initialie Drehrichtung anhand der Enten-Position festlegen
+                    if duck_center_x < IMAGE_CENTER_X:
+                        # Ente ist links -> Flucht nach rechts
+                        self.escape_direction = -1.0
+                    else:
+                        # Ente ist rechts -> Flucht nach links
+                        self.escape_direction = 1.0
 
-            # --- PRIORITÄT 2: ZONE 2 (WARNUNG - STARKES GEGENLENKEN) ---
-            elif z2["white"] or z2["yellow"] or z2["duck"]:
-                self.state = "DRIVING"
-                cmd.v = 0.06 # Geschwindigkeit drosseln
+                cmd.v = 0.0
                 
-                if z2["white"]: 
-                    cmd.omega = 1.2   # Stark nach links
-                elif z2["yellow"]: 
-                    cmd.omega = -1.2  # Stark nach rechts
-                elif z2["duck"]: 
-                    cmd.omega = 0.0   # Ente ausweichen
+                # INVERTIERUNGS-LOGIK WÄHREND DER ROTATION (Dein Schutzmechanismus)
+                if self.escape_direction == 1.0 and z2["yellow"]:
+                    rospy.logwarn("Drehung nach links blockiert durch GELB! Invertiere nach rechts.")
+                    self.escape_direction = -1.0
+                elif self.escape_direction == -1.0 and z2["white"]:
+                    rospy.logwarn("Drehung nach rechts blockiert durch WEISS! Invertiere nach links.")
+                    self.escape_direction = 1.0
 
-            # --- PRIORITÄT 3: ZONE 3 (VORAUSSCHAU - LEICHTES GEGENLENKEN) ---
-            elif z3["white"] or z3["yellow"] or z3["duck"]:
-                self.state = "DRIVING"
-                cmd.v = 0.2 # Normale Geschwindigkeit
-                
-                if z3["white"]: 
-                    cmd.omega = 0.5   # Leicht nach links korrigieren
-                elif z3["yellow"]: 
-                    cmd.omega = -0.5  # Leicht nach rechts korrigieren
-                elif z3["duck"]: 
-                    cmd.omega = 0.0
+                cmd.omega = 2.0 * self.escape_direction
 
-            # --- ALLES FREI ---
-            else:
+            # Sobald Zone 1 & 2 entenfrei sind, verlassen wir das Rotieren wieder
+            elif self.state == "ROTATING" and not z1["duck"] and not z2["duck"]:
+                rospy.loginfo("Gefahr gebannt! Zurück zur normalen Fahrt.")
                 self.state = "DRIVING"
                 cmd.v = 0.2
                 cmd.omega = 0.0
-            # publish command and wait
+
+            # ==========================================
+            # DRIVING STATE LOGIK (ZONE 2 & 3)
+            # ==========================================
+            elif self.state == "DRIVING":
+
+                # --- ZONE 2: WARNUNG (Hindernisse oder harte Kurven) ---
+                if z2["duck"] or z2["white"] or z2["yellow"]:
+                    
+                    # Fall A: Ente in Zone 2 -> Verlangsamen und Ausweichen!
+                    if z2["duck"]:
+                        cmd.v = 0.06 # Stark drosseln
+                        
+                        if z2["white"]:
+                            cmd.omega = self.z2_omega # Ente + Weiß -> Stark nach Links
+                        elif z2["yellow"]:
+                            cmd.omega = -self.z2_omega # Ente + Gelb -> Stark nach Rechts
+                        else:
+                            # Ente, aber keine Linien in Z2? Frage Zone 3!
+                            if z3["white"]:
+                                cmd.omega = self.z2_omega
+                            elif z3["yellow"]:
+                                cmd.omega = -self.z2_omega
+                            else:
+                                # Gar keine Linien in Z2 oder Z3? Nutze Enten-Zentrum!
+                                if duck_center_x < IMAGE_CENTER_X:
+                                    cmd.omega = self.z2_omega # Ente links -> nach rechts lenken
+                                else:
+                                    cmd.omega = -self.z2_omega  # Ente rechts -> nach links lenken
+                    
+                    # Fall B: Keine Ente, aber Linien in Zone 2 (Harte Kurven)
+                    else:
+                        cmd.v = 0.15 # Leicht drosseln für die Kurve
+                        if z2["white"]:
+                            cmd.omega = self.z2_omega  # Harte Kurve nach links
+                        elif z2["yellow"]:
+                            cmd.omega = -self.z2_omega # Harte Kurve nach rechts
+
+                # --- ZONE 3: VORAUSSCHAU (Spurhalten) ---
+                elif z3["white"] or z3["yellow"]:
+                    cmd.v = 0.20 # Normale Geschwindigkeit
+                    
+                    if z3["white"]:
+                        cmd.omega = 0.7  # Weiches Gegenlenken nach links
+                    elif z3["yellow"]:
+                        cmd.omega = -0.7 # Weiches Gegenlenken nach rechts
+
+                # --- ALLES FREI (Keine Enten, Keine Linien) ---
+                else:
+                    cmd.v = 0.25 # Vollgas
+                    cmd.omega = 0.0
+
+            # --- COMMAND PUBLISH ---
             try:
                 self.pub_cmd.publish(cmd)
             except Exception:
                 rospy.logwarn("Failed to publish cmd")
+                
             rate.sleep()
 
     def _on_shutdown(self):
