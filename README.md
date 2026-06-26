@@ -6,6 +6,11 @@ Nach dem Klonen: Erweiterung dev Containers installieren, STRG SHIFT P um reopen
 Auf Bot einloggen im Terminal (Container läuft && im DuckieNetz):
 ./docker_login.sh dann Botnamen eingeben
 
+Dann:
+Bot auf Parkour fahren lassen:
+launchers/follow_lane.sh
+launchers/avoid_ducks.sh
+
 Im Terminal scrollen:
 STRG + B, :, set -g mouse on
 

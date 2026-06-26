@@ -41,7 +41,7 @@ class DuckAvoidanceNode:
         # --- MASKEN PARAMETER ---
         self.hsv_limits = {}
         self._load_hsv_config()
-        self.pixel_threshold = 50 # Ab wann gilt ein Trapez als durch Linien blockiert?
+        self.pixel_threshold = 100 # Ab wann gilt ein Trapez als durch Linien blockiert?
 
         # --- ODOMETRIE ---
         self.theta = 0.0
@@ -61,17 +61,19 @@ class DuckAvoidanceNode:
 
         # --- ZUSTAND & PERCEPTION ---
         self.state = "DRIVING" # DRIVING, ROTATING
-        self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(4)] # Status für Zone 1, 2, 3
+        self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(3)] # Status für Zone 1, 2, 3
         self.duck_bboxes = [] # Eingehende Enten [(x1,y1,x2,y2), ...]
         self.display_image = None
-        self.buffer_size = 15
+        self.buffer_size = 17
         # Puffer exklusiv für Zone 2
         self.z2_yellow_history = deque(maxlen=self.buffer_size)
-
+        self.wiggle_direction = -1.0
+        self.last_wiggle_time = time.monotonic()
+        self.wiggle_power = 0.065
         # Tracking für Rotationsursache und Inversions-Schutz
         self.rotation_reason = None
-        # use float seconds for time comparisons (rospy.get_time())
-        self.last_inversion_time = 0.0
+        # use monotonic wall-clock for inversion cooldown (robust to /use_sim_time)
+        self.last_inversion_time = time.monotonic()
 
 
         # --- ROS INTERFACES ---
@@ -145,8 +147,8 @@ class DuckAvoidanceNode:
         zones_3d = [
             [(0.1, -0.06), (0.14, -0.06), (0.14, 0.06), (0.1, 0.06)],   # Zone 0
             [(0.14, -0.08), (0.2, -0.073), (0.2, 0.073), (0.14, 0.08)],   # Zone 1
-            [(0.2, -0.073), (0.3, -0.07), (0.3, 0.07), (0.2, 0.073)],       # Zone 2
-            [(0.30, -0.07), (0.42, -0.07), (0.42, 0.07), (0.30, 0.07)]      # Zone 3
+            [(0.2, -0.073), (0.3, -0.07), (0.3, 0.07), (0.2, 0.073)]       # Zone 2
+            #[(0.30, -0.07), (0.42, -0.07), (0.42, 0.07), (0.30, 0.07)]      # Zone 3
         ]
 
         for z in zones_3d:
@@ -256,7 +258,7 @@ class DuckAvoidanceNode:
         mask_lines = cv2.bitwise_or(mask_white, mask_yellow)
 
         # 3. Detaillierte Zonen evaluieren
-        self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(4)]
+        self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(3)]
         
         for i, (trap_pts, trap_poly) in enumerate(zip(self.trapezoids_2d, self.trapezoids_shapely)):
             # A) Enten-Kollision
@@ -311,13 +313,6 @@ class DuckAvoidanceNode:
             else:
                 cv2.polylines(undistorted, [trap_pts], isClosed=True, color=(0, 255, 255), thickness=2) # Gelb = Frei
         
-        # Debug Bild publizieren
-        #msg_out = CompressedImage()
-        #msg_out.header.stamp = rospy.Time.now()
-        #msg_out.format = "jpeg"
-        #msg_out.data = np.array(cv2.imencode('.jpg', undistorted)[1]).tobytes()
-        #self.pub_debug.publish(msg_out)
-
         # Bild an den Main-Thread für das OpenCV Fenster übergeben
         self.display_image = undistorted
 
@@ -327,8 +322,8 @@ class DuckAvoidanceNode:
     def run(self):
         rate = rospy.Rate(10)
         IMAGE_CENTER_X = 320 
-        # store as float seconds to allow arithmetic with rospy.get_time()
-        self.last_inversion_time = rospy.get_time()
+        # store monotonic timestamp for inversion cooldown
+        self.last_inversion_time = time.monotonic()
         
         while not rospy.is_shutdown():
             cmd = Twist2DStamped()
@@ -337,7 +332,7 @@ class DuckAvoidanceNode:
             z0 = self.zones_status[0]
             z1 = self.zones_status[1]
             z2 = self.zones_status[2]
-            z3 = self.zones_status[3]
+            #z3 = self.zones_status[3]
 
             # --- HILFSFUNKTION: Größte Ente analysieren ---
             duck_center_x = IMAGE_CENTER_X
@@ -371,7 +366,7 @@ class DuckAvoidanceNode:
                     self.escape_direction = -1.0 if duck_center_x < IMAGE_CENTER_X else 1.0
 
             # Trigger C: Abbruch der Rotation (Alles frei)
-            elif self.state == "ROTATING" and not z1["duck"] and not z2["duck"] and not z2["yellow"] and not z2["white"]:
+            elif self.state == "ROTATING" and not z1["duck"] and not z2["duck"] and not z1["yellow"] and not z1["white"]:
                 if self.rotation_reason == "duck":
                     rospy.loginfo("Korridor frei. An Ente vorbei fahren.")
                     self._drive_target_distance = 0.15
@@ -388,12 +383,18 @@ class DuckAvoidanceNode:
             # ==========================================================
             
             if self.state == "ROTATING":
-                cmd.v = 0.0
-                
+                current_time = time.monotonic()
+                #vor und zurück setzen um Rollmoment zu überwinden
+                if current_time - self.last_wiggle_time > 0.05:
+                    self.wiggle_direction *= -1.0
+                    self.last_wiggle_time = current_time
+                cmd.v = 1.0*self.wiggle_power*self.wiggle_direction
+
                 # INVERTIERUNGS-SCHUTZ: Läuft jetzt JEDEN Frame, 
                 # egal ob die Ente noch in Zone 1 ist oder nicht!
-                current_time = rospy.get_time()
-                if (current_time - self.last_inversion_time) > 0.8: 
+                dt = current_time - self.last_inversion_time
+                rospy.logdebug(f"Inversion check dt={dt:.3f}s, escape={self.escape_direction}")
+                if dt > 1.0: 
                     if self.escape_direction == 1.0 and z2["yellow"]:
                         rospy.logwarn("Linksdrehung wegen GELB auf RECHTS wechseln")
                         self.escape_direction = -1.0
@@ -404,7 +405,7 @@ class DuckAvoidanceNode:
                         self.escape_direction = 1.0
                         self.last_inversion_time = current_time
 
-                cmd.omega = 1.3 * self.escape_direction
+                cmd.omega = 1.6 * self.escape_direction
 
             elif self.state == "DRIVING":
                 # Spurkorrektur in Zone 1
@@ -417,11 +418,11 @@ class DuckAvoidanceNode:
                 
                 # Zone 2: Drosseln und Ausweichen
                 elif z2["duck"]:
-                    cmd.v = 0.13 
+                    cmd.v = 0.11 
                     if z2["white"]:
-                        cmd.omega = 1.3 
+                        cmd.omega = 1.2 
                     elif z2["yellow"]:
-                        cmd.omega = -1.3 
+                        cmd.omega = -1.2 
                     else:
                         if duck_center_x < IMAGE_CENTER_X:
                             cmd.omega = 1.3 
@@ -471,12 +472,10 @@ class DuckAvoidanceNode:
             return img
 
         # 1. Text für Translation (Vor/Zurück/Stehen)
-        if abs(cmd_v) < 0.01:
+        if abs(cmd_v) < 0.08:
             action_v = "stehen"
-        elif cmd_v > 0:
-            action_v = "fahren"
         else:
-            action_v = "rueckwaerts"
+            action_v = "fahren"
 
         # 2. Text für Rotation (Geradeaus/Links/Rechts)
         if abs(cmd_omega) < 0.1:
