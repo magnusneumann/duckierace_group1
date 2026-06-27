@@ -69,7 +69,7 @@ class DuckAvoidanceNode:
         self.z2_yellow_history = deque(maxlen=self.buffer_size)
         self.wiggle_direction = -1.0
         self.last_wiggle_time = time.monotonic()
-        self.wiggle_power = 0.065
+        self.wiggle_power = 0.07 # mit 0.8 ist der wiggel sichtbar und effektiv, aber es ist halt weniger schön, je nach akkustand sinnvoll
         # Tracking für Rotationsursache und Inversions-Schutz
         self.rotation_reason = None
         # use monotonic wall-clock for inversion cooldown (robust to /use_sim_time)
@@ -385,7 +385,7 @@ class DuckAvoidanceNode:
             if self.state == "ROTATING":
                 current_time = time.monotonic()
                 #vor und zurück setzen um Rollmoment zu überwinden
-                if current_time - self.last_wiggle_time > 0.05:
+                if current_time - self.last_wiggle_time > 0.06:
                     self.wiggle_direction *= -1.0
                     self.last_wiggle_time = current_time
                 cmd.v = 1.0*self.wiggle_power*self.wiggle_direction

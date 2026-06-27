@@ -17,7 +17,7 @@ class MapRelocNode:
         self._v = os.environ.get('VEHICLE_NAME', 'duckiebot')
         
         # --- ODOMETRIE PARAMETER (Duckiebot Standard) ---
-        self.R = 0.215  # Radradius in Metern
+        self.R = 0.032  # Radradius in Metern
         self.N = 135    # Encoder-Ticks pro Umdrehung
         self.L = 0.10   # Radabstand (Baseline) in Metern -> TUNING WERT!
 
