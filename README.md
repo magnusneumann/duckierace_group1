@@ -1,20 +1,35 @@
 # DuckieRace
-Duckie Challange 2026 - Fach Robogistics
+## Duckie Challange 2026 - Fach Robogistics
 
-Nach dem Klonen: Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container auszuführen, Pakete installieren: tmux, pupil-apriltags, numpy updaten
+### Nach dem Klonen: 
+Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container auszuführen, Pakete installieren: tmux, pupil-apriltags, numpy updaten
 
-Auf Bot einloggen im Terminal (Container läuft && im DuckieNetz):
+## Auf Bot einloggen im Terminal (Container läuft && im DuckieNetz):
 ./docker_login.sh dann Botnamen eingeben
 
-Bot auf Parkour fahren lassen:
-launchers/follow_lane.sh
-Bot auf Wendehammer mit Enten fahren lassen:
-launchers/avoid_ducks.sh
-Bot den Parkour mappen lassen und als Service auf Kanten gemappte Punkte abfahren:
-launchers/slam_and_service
-
-Im Terminal scrollen:
+### In diesem Terminal scrollen:
 STRG + B, :, set -g mouse on
+
+
+
+## Bot auf Parkour fahren lassen:
+launchers/follow_lane.sh
+
+## Bot auf Wendehammer mit Enten fahren lassen:
+launchers/avoid_ducks.sh
+
+## Bot den Parkour mappen lassen und als Service auf Kanten gemappte Punkte abfahren:
+launchers/slam_and_service
+### Mapping Starten: (löscht den aktuellen Graphen und fängt an aufzuzeichnen)
+rosservice call /duckie_bot_NAME/mapping/start
+### Karte Speichern (Export):
+rosservice call /duckie_bot_NAME/mapping/export
+
+
+
+
+
+## ggf interessant:
 
 Terminal wechseln:
 STRG + B, Pfeiltaste
@@ -25,5 +40,6 @@ xhost +local:root im gobalen Terminal
 ChArUco kalibrierung während der charuco_calibration_node läuft:
 rosservice call /VEHICLENAME/calibration/save_homography
 
-
+wenn ein Knoten rumheult, dass er kein Display findet, obwohl es ein Display gibt
+export DISPLAY=:0
 

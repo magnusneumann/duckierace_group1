@@ -34,22 +34,22 @@ class CrossIntersectionNode:
         # ACHTUNG TUNING: Diese Werte musst du an eure Matte anpassen!
         if decision == "straight":
             #self.drive(v=0.2, omega=0.2, duration=2.0)
-            self.drive(v=0.2, omega=0.1, duration=2.1)
+            self.drive(v=0.2, omega=0.0, duration=1.0)
         elif decision == "right":
             # 1. Kurz geradeaus in die Kreuzung
-            self.drive(v=0.2, omega=0.2, duration=1.2)
+            self.drive(v=0.2, omega=0.0, duration=1.0)
             # 2. Hart rechts lenken
-            self.drive(v=0.13, omega=-3.0, duration=0.4) #vorher 3.2
+            self.drive(v=0.12, omega=-3.0, duration=0.4) #vorher 3.2
             # 3. Kurz geradeaus aus der Kreuzung raus
             #self.drive(v=0.2, omega=0.1, duration=0.5)
             
         elif decision == "left":
             # 1. Etwas weiter geradeaus in die Kreuzung (Linksabbieger fahren einen weiteren Bogen)
-            self.drive(v=0.2, omega=0.3, duration=1.4)
+            self.drive(v=0.2, omega=0.3, duration=1.2)
             # 2. Hart links lenken
             self.drive(v=0.2, omega=2.5, duration=1.4)
             # 3. Kurz geradeaus
-            self.drive(v=0.2, omega=0.0, duration=0.3)
+            #self.drive(v=0.2, omega=0.0, duration=0.0)
 
         # Vollbremsung am Ende des Manövers
         #self.drive(v=0.2, omega=0.0, duration=0.1)

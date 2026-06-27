@@ -29,7 +29,9 @@ class SwitchControlNode:
         self.pub_cmd_vel = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # --- Subscriber ---
-        rospy.Subscriber(f"/{self._vehicle_name}/detect/stopline", String, self.cbStopline, queue_size=1)
+        # FEHLER BEHOBEN: Topic von 'stopline' auf 'stop_line' geändert und Datentyp von String auf Bool geändert!
+        rospy.Subscriber(f"/{self._vehicle_name}/detect/stop_line", Bool, self.cbStopline, queue_size=1)
+        
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_decision", String, self.cbTurnDecision, queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_completed", String, self.cbTurnCompleted, queue_size=1)
         
@@ -44,25 +46,10 @@ class SwitchControlNode:
         if self.state != State.CROSSING_INTERSECTION:
             self.turn_decision = msg.data
 
-    #def cbDuckDetected(self, msg):
-    #    duck_in_way = msg.data
-    #    
-    #    if duck_in_way and self.state != State.AVOID_COLLISION:
-    #        rospy.logwarn("ENTE ERKANNT! Übergebe Kontrolle an Ausweich-Node.")
-    #        self.state = State.AVOID_COLLISION
-    #        # Alle anderen Steuerungen abschalten
-    #        self.pub_lane_control.publish(Int32(0))
-    #        
-    #    elif not duck_in_way and self.state == State.AVOID_COLLISION:
-    #        rospy.loginfo("Weg wieder frei. Zurück zum Lane Following.")
-    #        self.state = State.LANE_FOLLOWING
-    #        self.pub_duck_control.publish(Int32(0)) # Duck-Steuerung aus
-
     def cbStopline(self, msg):
         now = rospy.Time.now()
         
         # Wir reagieren nur auf Linien, wenn wir im Spur-Modus sind UND die Ignorier-Zeit abgelaufen ist.
-        # (Eine Ente hat Vorfahrt. Wenn wir wegen einer Ente stehen, ignorieren wir die Kreuzung vorerst)
         if self.state == State.LANE_FOLLOWING and now > self.ignore_stopline_until:
             rospy.loginfo("Stopplinie erreicht! Friere aktuelle Entscheidung ein.")
             self.state = State.STOPPED_AT_LINE
@@ -102,15 +89,9 @@ class SwitchControlNode:
             # Der Boss verteilt hier die Arbeitserlaubnis (Enable-Signale) stetig an die Arbeiter
             if self.state == State.LANE_FOLLOWING:
                 self.pub_lane_control.publish(Int32(1))
-                #self.pub_duck_control.publish(Int32(0))
-            #    
-            #elif self.state == State.AVOID_COLLISION:
-            #    self.pub_lane_control.publish(Int32(0))
-            #    self.pub_duck_control.publish(Int32(1)) # Gibt den YOLO-Lenk-Node frei
-            #    
             elif self.state == State.STOPPED_AT_LINE:
                 self.pub_lane_control.publish(Int32(0))
-                #self.pub_duck_control.publish(Int32(0))
+                # Haltekommando kontinuierlich senden, damit er wirklich steht
                 self.pub_cmd_vel.publish(Twist2DStamped(v=0.0, omega=0.0))
                 
             rate.sleep()

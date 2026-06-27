@@ -2,16 +2,13 @@
 source /opt/ros/noetic/setup.bash
 source devel/setup.bash
 
-rosrun follow_lane detect_lane_node.py &
-rosrun follow_lane detect_sign_node.py &
-#rosrun follow_lane configuration_node.py &
-rosrun follow_lane switch_control_node.py &
-rosrun follow_lane cross_intersection_node.py &
-#rosrun follow_lane detect_ducks_node.py &
-#rosrun follow_lane dashboard_node.py &
-#rosrun follow_lane mapping_node.py &
-sleep 5
+rosrun slam_and_service detect_tags_node.py &
+rosrun slam_and_service switch_control_node.py &
+rosrun slam_and_service cross_intersection_node.py &
+rosrun slam_and_service mapping_and_relocalization_node.py &
 
-rosrun follow_lane control_lane_node.py
+sleep 3
+
+rosrun slam_and_service detect_and_control_lane_node.py
 
 wait
