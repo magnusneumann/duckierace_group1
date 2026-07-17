@@ -1,3 +1,7 @@
 build/*
 devel/*
 .catkin_workspace
+__pycache__/
+*.py[cod]
+*$py.class
+src/packages/slam_and_service/config/challenge4_mapping.json

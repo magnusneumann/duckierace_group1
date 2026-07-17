@@ -43,3 +43,26 @@ rosservice call /VEHICLENAME/calibration/save_homography
 wenn ein Knoten rumheult, dass er kein Display findet, obwohl es ein Display gibt
 export DISPLAY=:0
 
+## Challenge 4: Topologisches Mapping und Gate-Navigation
+
+Konfiguration:
+`src/packages/slam_and_service/config/challenge4_graph.json`
+
+Starten:
+`bash launchers/challenge4.sh`
+
+Topologisches Mapping starten:
+`rosservice call /duckie_bot_NAME/mapping4/start`
+
+Mapping mit Gate-Zuordnungen und Fahrzeiten speichern:
+`rosservice call /duckie_bot_NAME/mapping4/export`
+
+Mapping fuer Navigation laden:
+`rosservice call /duckie_bot_NAME/navigation/load_mapping`
+
+Navigation mit der konfigurierten Gate-Reihenfolge starten:
+`rosservice call /duckie_bot_NAME/navigation/start`
+
+Gate-Reihenfolge zur Laufzeit setzen:
+`rostopic pub -1 /duckie_bot_NAME/navigation/route std_msgs/String "data: '[5, 9, 6]'"`
+

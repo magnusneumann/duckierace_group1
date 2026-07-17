@@ -21,11 +21,12 @@ class DetectTagsNode:
             4: ["T-straight_or_right", ["straight", "right"]],
         }
         
-        # IDs 5-10: Kanten-Marker (Werden NUR an den Mapping-Node gesendet)
-        self.edge_tags = {5, 6, 7, 8, 9, 10}
+        # IDs 5-13: Kanten-/Tor-Marker fuer Challenge 4.
+        self.edge_tags = set(range(5, 14))
         
         self.current_decision = "straight"
         self.current_tag_id = "None"
+        self.publish_intersection_decisions = rospy.get_param("~publish_intersection_decisions", True)
         self.min_tag_area = 600  
         self.frame_counter = 0
         
@@ -102,8 +103,11 @@ class DetectTagsNode:
             # 2. NUR bei Kreuzungs-Tags eine Lenk-Entscheidung publishen
             if best_tag.tag_id in self.tag_rules:
                 allowed = self.tag_rules[best_tag.tag_id][1]
-                self.current_decision = random.choice(allowed)
-                self.pub_decision.publish(String(data=self.current_decision))
+                if self.publish_intersection_decisions:
+                    self.current_decision = random.choice(allowed)
+                    self.pub_decision.publish(String(data=self.current_decision))
+                else:
+                    self.current_decision = "planner controlled"
             else:
                 self.current_decision = "none (edge marker)"
 
