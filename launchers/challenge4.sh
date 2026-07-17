@@ -10,6 +10,7 @@ rosrun slam_and_service switch_control_node.py &
 rosrun slam_and_service cross_intersection_node.py &
 python3 src/packages/slam_and_service/src/mapping_topological_node.py &
 rosrun slam_and_service navigator_node.py &
+rosrun follow_lane dashboard_node.py &
 
 sleep 4
 

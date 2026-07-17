@@ -18,9 +18,29 @@ class DuckAvoidanceNode:
         self.enable = True # Wird durch /switch/lane_control gesteuert
         
         # --- KONFIGURATIONSPFADE ---
-        self.path_hsv = '/root/DuckieRace/src/packages/avoid_ducks/config/detect_lane_node.json'
-        self.path_homography = '/root/DuckieRace/src/packages/avoid_ducks/config/homography.yaml'
-        self.path_intrinsics = '/root/DuckieRace/src/packages/avoid_ducks/config/my_camera_info.yaml'
+        default_config_dir = '/root/DuckieRace/src/packages/avoid_ducks/config'
+        self.path_hsv = rospy.get_param(
+            "~path_hsv",
+            self._first_existing_path([
+                os.path.join(default_config_dir, "detect_lane_node.json"),
+                os.path.join(os.getcwd(), "src/packages/slam_and_service/config/detect_lane_node.json"),
+                os.path.join(os.getcwd(), "src/packages/avoid_ducks/config/detect_lane_node.json"),
+            ]),
+        )
+        self.path_homography = rospy.get_param(
+            "~path_homography",
+            self._first_existing_path([
+                os.path.join(default_config_dir, "homography.yaml"),
+                os.path.join(os.getcwd(), "src/packages/avoid_ducks/config/homography.yaml"),
+            ]),
+        )
+        self.path_intrinsics = rospy.get_param(
+            "~path_intrinsics",
+            self._first_existing_path([
+                os.path.join(default_config_dir, "my_camera_info.yaml"),
+                os.path.join(os.getcwd(), "src/packages/avoid_ducks/config/my_camera_info.yaml"),
+            ]),
+        )
         
         # --- KAMERA & ENTZERRUNG ---
         self.map1 = None
@@ -44,6 +64,7 @@ class DuckAvoidanceNode:
         self.state = "DRIVING" # DRIVING, ROTATING, STOPPED_RED, COOLDOWN
         self.zones_status = [{"white": False, "yellow": False, "red": False} for _ in range(4)]
         self.display_image = None
+        self.last_image_time = None
         
         # Median Filter für Zone 2
         self.buffer_size = 17
@@ -61,6 +82,10 @@ class DuckAvoidanceNode:
         # --- ROS INTERFACES ---
         self.pub_cmd = rospy.Publisher(f"/{self._v}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
         self.pub_debug = rospy.Publisher(f"/{self._v}/debug/avoidance_view/compressed", CompressedImage, queue_size=1)
+        self.pub_debug_lane = rospy.Publisher(f"/{self._v}/debug/lane_croped", CompressedImage, queue_size=1)
+        self.pub_debug_white = rospy.Publisher(f"/{self._v}/debug/lane_white", CompressedImage, queue_size=1)
+        self.pub_debug_yellow = rospy.Publisher(f"/{self._v}/debug/lane_yellow", CompressedImage, queue_size=1)
+        self.pub_debug_red = rospy.Publisher(f"/{self._v}/debug/lane_red", CompressedImage, queue_size=1)
         
         # NEU: Publisher für den Switch Control Node (Meldet erkannte Stopplinie)
         self.pub_stop_line = rospy.Publisher(f"/{self._v}/detect/stop_line", Bool, queue_size=1)
@@ -71,6 +96,12 @@ class DuckAvoidanceNode:
 
         rospy.loginfo("Duck Avoidance Node (Pure Lane Control Edition) initialisiert.")
         rospy.on_shutdown(self._on_shutdown)
+
+    def _first_existing_path(self, candidates):
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        return candidates[0]
 
     # ==========================================
     # 1. SCHNITTSTELLEN FÜR SWITCH CONTROL
@@ -92,6 +123,7 @@ class DuckAvoidanceNode:
                 data = yaml.safe_load(f)
                 self.K = np.array(data['K']).reshape((3,3))
                 self.D = np.array(data['D'])
+                rospy.loginfo(f"Intrinsics geladen: {self.path_intrinsics}")
         except Exception as e:
             rospy.logwarn(f"Intrinsics Fehler: {e}")
 
@@ -118,7 +150,9 @@ class DuckAvoidanceNode:
             with open(self.path_homography, 'r') as f:
                 data = yaml.safe_load(f)
                 self.H = np.array(data['homography']).reshape((3,3))
-        except Exception:
+                rospy.loginfo(f"Homographie geladen: {self.path_homography}")
+        except Exception as e:
+            rospy.logerr(f"Homographie konnte nicht geladen werden: {e}")
             return
 
         zones_3d = [
@@ -142,6 +176,7 @@ class DuckAvoidanceNode:
         try:
             with open(self.path_hsv, 'r') as f:
                 self.hsv_limits = json.load(f)
+                rospy.loginfo(f"HSV Config geladen: {self.path_hsv}")
         except Exception as e:
             rospy.logwarn(f"HSV Config Fehler, nutze Fallback: {e}")
             self.hsv_limits = {
@@ -160,6 +195,7 @@ class DuckAvoidanceNode:
 
         np_arr = np.frombuffer(msg.data, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        self.last_image_time = time.monotonic()
         h, w = img.shape[:2]
 
         self._ensure_undistort_maps(w, h)
@@ -172,6 +208,9 @@ class DuckAvoidanceNode:
                 undistorted = img.copy()
 
         if not self.trapezoids_2d:
+            rospy.logerr_throttle(2.0, "Keine Lane-Zonen geladen. Pruefe homography.yaml/path_homography.")
+            self.display_image = self._draw_debug_overlay(img.copy(), "NO HOMOGRAPHY")
+            self._publish_compressed(self.pub_debug_lane, self.display_image)
             return
 
         hsv = cv2.cvtColor(undistorted, cv2.COLOR_BGR2HSV)
@@ -224,6 +263,7 @@ class DuckAvoidanceNode:
                 cv2.polylines(undistorted, [trap_pts], isClosed=True, color=(0, 255, 255), thickness=2)
         
         self.display_image = undistorted
+        self._publish_debug_images(undistorted, mask_white, mask_yellow, mask_red)
 
     # ==========================================
     # 4. CONTROL LOOP & FSM
@@ -233,10 +273,10 @@ class DuckAvoidanceNode:
         
         while not rospy.is_shutdown():
             # GUI immer zeichnen, auch wenn pausiert
-            #if self.display_image is not None:
-            #    debug_frame = self._draw_debug_overlay(self.display_image.copy(), self.state)
-            #    cv2.imshow("Duck Avoidance & Lane Control", debug_frame)
-            #cv2.waitKey(1)
+            if self.display_image is not None:
+                debug_frame = self._draw_debug_overlay(self.display_image.copy(), self.state)
+                cv2.imshow("DuckieRace Lane Control", debug_frame)
+            cv2.waitKey(1)
 
             # --- KONTROLLE AUSSETZEN, WENN DURCH SWITCH PAUSIERT ---
             if not self.enable:
@@ -247,10 +287,26 @@ class DuckAvoidanceNode:
             cmd.header.stamp = rospy.Time.now()
             current_time = time.monotonic()
 
+            if self.last_image_time is None or current_time - self.last_image_time > 1.0:
+                rospy.logwarn_throttle(2.0, "Lane Control wartet auf aktuelle Kamerabilder.")
+                cmd.v = 0.0
+                cmd.omega = 0.0
+                self.pub_cmd.publish(cmd)
+                rate.sleep()
+                continue
+
             z0 = self.zones_status[0]
             z1 = self.zones_status[1]
             z2 = self.zones_status[2]
             z3 = self.zones_status[3]
+
+            if not self.trapezoids_2d:
+                rospy.logerr_throttle(2.0, "Lane Control gestoppt: keine Homographie-Zonen verfuegbar.")
+                cmd.v = 0.0
+                cmd.omega = 0.0
+                self.pub_cmd.publish(cmd)
+                rate.sleep()
+                continue
 
             # ==========================================================
             # PHASE 1: ZUSTANDS-WECHSEL
@@ -346,17 +402,32 @@ class DuckAvoidanceNode:
 
     def _draw_debug_overlay(self, img, state):
         if img is None: return img
-    #    overlay = img.copy()
-    #    cv2.rectangle(overlay, (0, img.shape[0] - 40), (img.shape[1], img.shape[0]), (0, 0, 0), -1)
-    #    alpha = 0.6
-    #    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-    #    
-    #    status_text = f"Modus: {state}"
-    #    if not self.enable:
-    #        status_text += " [PAUSIERT VON SWITCH_CONTROL]"
-    #        
-    #    cv2.putText(img, status_text, (10, img.shape[0] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        overlay = img.copy()
+        cv2.rectangle(overlay, (0, img.shape[0] - 42), (img.shape[1], img.shape[0]), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, img, 0.4, 0, img)
+
+        status_text = f"Modus: {state}"
+        if not self.enable:
+            status_text += " [PAUSIERT]"
+
+        cv2.putText(img, status_text, (10, img.shape[0] - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
         return img
+
+    def _publish_debug_images(self, lane_img, mask_white, mask_yellow, mask_red):
+        self._publish_compressed(self.pub_debug, lane_img)
+        self._publish_compressed(self.pub_debug_lane, lane_img)
+        self._publish_compressed(self.pub_debug_white, mask_white)
+        self._publish_compressed(self.pub_debug_yellow, mask_yellow)
+        self._publish_compressed(self.pub_debug_red, mask_red)
+
+    def _publish_compressed(self, publisher, img):
+        if publisher.get_num_connections() == 0:
+            return
+        msg = CompressedImage()
+        msg.header.stamp = rospy.Time.now()
+        msg.format = "jpeg"
+        msg.data = np.array(cv2.imencode(".jpg", img)[1]).tobytes()
+        publisher.publish(msg)
 
     def _on_shutdown(self):
         try:
