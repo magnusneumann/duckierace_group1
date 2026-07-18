@@ -2,7 +2,12 @@
 ## Duckie Challange 2026 - Fach Robogistics
 
 ### Nach dem Klonen: 
-Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container auszuführen, Pakete installieren: tmux, pupil-apriltags, numpy updaten
+Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container auszuführen,
+das dockerfile wurde erweitert, alle Pakete müssten automatisch installiert werden. 
+
+zuvor musst nachträglich installiert werden:
+apt-get update && apt-get install -y tmux python3-pip && python3 -m pip install --upgrade pip && python3 -m pip install --upgrade numpy ultralytics shapely pupil-apriltags
+dazu noch onnx und onnxruntime installieren 
 
 ## Auf Bot einloggen im Terminal (Container läuft && im DuckieNetz):
 ./docker_login.sh dann Botnamen eingeben
