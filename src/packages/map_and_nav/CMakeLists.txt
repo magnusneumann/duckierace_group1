@@ -1,5 +1,6 @@
+
 cmake_minimum_required(VERSION 3.0.2)
-project(slam_and_service)
+project(map_and_nav)
 
 find_package(catkin REQUIRED COMPONENTS
   rospy

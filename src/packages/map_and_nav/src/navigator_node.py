@@ -15,7 +15,7 @@ class NavigatorNode:
         self._vehicle_name = os.environ.get("VEHICLE_NAME", "duckiebot")
 
         package_root = os.path.dirname(os.path.dirname(__file__))
-        default_config = os.path.join(package_root, "config", "challenge4_graph.json")
+        default_config = os.path.join(package_root, "config", "graph.json")
         default_mapping = os.path.join(package_root, "config", "challenge4_mapping.json")
 
         self.config_path = rospy.get_param("~config_path", default_config)
@@ -110,6 +110,8 @@ class NavigatorNode:
     def plan_route(self):
         self.route_steps = []
         planning_node = self.current_node
+        # Die Gate-Reihenfolge bleibt vorgegeben; nur die jeweils schnellste Anfahrt
+        # durch den gemappten, gewichteten Graphen wird berechnet.
         for gate_id in self.target_gates:
             _, steps = self.graph.route_to_gate(planning_node, int(gate_id))
             self.route_steps.extend(steps)
@@ -155,6 +157,8 @@ class NavigatorNode:
             return
         edge = self.graph.edges[self.active_step["edge_key"]]
         self.current_node = self.active_step["to"]
+        # Nach Erreichen der Stopplinie ist der Zielport der Eingangsport fuer
+        # die Abbiegentscheidung an der neuen Kreuzung.
         if self.current_node == edge["node_a"]:
             self.incoming_port = edge["port_a"]
         else:

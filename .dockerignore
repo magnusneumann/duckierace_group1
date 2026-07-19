@@ -1,0 +1,6 @@
+build/
+devel/
+catkin/
+.git/
+*.pyc
+__pycache__/

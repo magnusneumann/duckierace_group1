@@ -19,6 +19,7 @@ class EdgeKey:
 
     @classmethod
     def make(cls, node_a, port_a, node_b, port_b):
+        # Kanonische Sortierung: Beide Fahrtrichtungen bezeichnen dieselbe ungerichtete Kante.
         left = (str(node_a), int(port_a))
         right = (str(node_b), int(port_b))
         if right < left:
@@ -110,6 +111,7 @@ class TopologicalGraph:
         if old is None:
             edge["travel_time"] = elapsed
         else:
+            # Laufender Mittelwert glaettet Messabweichungen aus mehreren Befahrungen.
             edge["travel_time"] = ((old * samples) + elapsed) / (samples + 1)
         edge["samples"] = samples + 1
 
@@ -166,6 +168,8 @@ class TopologicalGraph:
 
         edge = self.edges[gate_edge]
         candidates = []
+        # Ein Tor liegt auf einer ungerichteten Kante und kann daher von beiden Enden
+        # angefahren werden; die guenstigere Richtung wird per Dijkstra ausgewaehlt.
         for approach_node, exit_port, target_node in (
             (edge["node_a"], edge["port_a"], edge["node_b"]),
             (edge["node_b"], edge["port_b"], edge["node_a"]),

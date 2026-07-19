@@ -23,7 +23,7 @@ class DuckAvoidanceNode:
             "~path_hsv",
             self._first_existing_path([
                 os.path.join(default_config_dir, "detect_lane_node.json"),
-                os.path.join(os.getcwd(), "src/packages/slam_and_service/config/detect_lane_node.json"),
+                os.path.join(os.getcwd(), "src/packages/map_and_nav/config/detect_lane_node.json"),
                 os.path.join(os.getcwd(), "src/packages/avoid_ducks/config/detect_lane_node.json"),
             ]),
         )
@@ -272,11 +272,11 @@ class DuckAvoidanceNode:
         rate = rospy.Rate(10)
         
         while not rospy.is_shutdown():
-            # GUI immer zeichnen, auch wenn pausiert
+            # GUI intern als Debug-Topic publizieren; keine eigenes Fenster öffnen
             if self.display_image is not None:
                 debug_frame = self._draw_debug_overlay(self.display_image.copy(), self.state)
-                cv2.imshow("DuckieRace Lane Control", debug_frame)
-            cv2.waitKey(1)
+                self._publish_compressed(self.pub_debug, debug_frame)
+                self._publish_compressed(self.pub_debug_lane, self.display_image)
 
             # --- KONTROLLE AUSSETZEN, WENN DURCH SWITCH PAUSIERT ---
             if not self.enable:
@@ -322,18 +322,17 @@ class DuckAvoidanceNode:
 
             elif self.state == "STOPPED_RED":
                 if (current_time - self.stop_timer_start) >= 2.0:
-                    rospy.loginfo("2s Stopp beendet. Überquere Linie (3s Cooldown).")
+                    rospy.loginfo("2s Stopp beendet. Überquere Linie (2s Cooldown).")
                     self.state = "COOLDOWN"
                     self.cooldown_timer_start = current_time
 
             elif self.state == "COOLDOWN":
-                if (current_time - self.cooldown_timer_start) >= 3.0:
+                if (current_time - self.cooldown_timer_start) >= 2.0:
                     rospy.loginfo("Cooldown beendet. Achte wieder auf rote Linien.")
                     self.state = "DRIVING"
 
             # Prio 2: Weiße/Gelbe Linie in Zone 0 (Notfall-Rotation)
             elif self.state not in ["ROTATING", "STOPPED_RED", "COOLDOWN"] and (z0["white"] or z0["yellow"]):
-                rospy.loginfo("Wegen Linie in Zone 0 rotieren.")
                 self.state = "ROTATING"
                 self.escape_direction = 1.0 if z0["white"] else -1.0
                 self.last_wiggle_time = current_time
@@ -341,7 +340,6 @@ class DuckAvoidanceNode:
                 
             # Abbruch der Rotation
             elif self.state == "ROTATING" and not z1["yellow"] and not z1["white"]:
-                rospy.loginfo("Linienrotation abgeschlossen. Weiterfahren.")
                 self.state = "DRIVING"
 
 

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>slam_and_service</name>
+  <name>map_and_nav</name>
   <version>0.1.0</version>
   <description>Example package combining a dummy SLAM placeholder and a ROS service.</description>
   <maintainer email="you@example.com">Your Name</maintainer>

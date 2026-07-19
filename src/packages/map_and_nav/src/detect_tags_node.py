@@ -13,7 +13,8 @@ class DetectTagsNode:
         rospy.init_node(node_name)
         self._vehicle_name = os.environ["VEHICLE_NAME"]
 
-        # IDs 1-4: Kreuzungen (Lenk-Entscheidungen treffen)
+        # IDs 1-4 beschreiben Kreuzungstypen; in Challenge 4 liefert der Planner
+        # die Abbiegentscheidung, daher kann deren Publikation deaktiviert werden.
         self.tag_rules = {
             1: ["X-all_directions", ["left", "straight", "right"]],
             2: ["T-left_or_right", ["left", "right"]],
@@ -40,17 +41,26 @@ class DetectTagsNode:
         # Publisher anlegen
         self.pub_decision = rospy.Publisher(f"/{self._vehicle_name}/intersection/turn_decision", String, queue_size=1)
         self.pub_tag_id = rospy.Publisher(f"/{self._vehicle_name}/detect/tag_id", String, queue_size=1)
+        self.pub_debug_tags = rospy.Publisher(f"/{self._vehicle_name}/debug/tags", CompressedImage, queue_size=1)
         
         # Kamera abonnieren
         camera_topic = f"/{self._vehicle_name}/camera_node/image/compressed"
         rospy.Subscriber(camera_topic, CompressedImage, self.cb_image, queue_size=1, buff_size=2**24)
 
-        # Sicherstellen, dass Fenster beim Beenden zerstört werden
         rospy.on_shutdown(self.shutdown_hook)
 
     def shutdown_hook(self):
         rospy.loginfo("Fahre Tags Detection Node sicher herunter...")
         cv2.destroyAllWindows()
+
+    def _publish_tags_debug_image(self, img):
+        if self.pub_debug_tags.get_num_connections() == 0:
+            return
+        msg = CompressedImage()
+        msg.header.stamp = rospy.Time.now()
+        msg.format = "jpeg"
+        msg.data = np.array(cv2.imencode(".jpg", img)[1]).tobytes()
+        self.pub_debug_tags.publish(msg)
 
     def cb_image(self, msg):
         # Frame-Skipping (spart CPU, nimmt nur jedes 3. Bild)
@@ -121,28 +131,15 @@ class DetectTagsNode:
                 allowed_txt = ", ".join(self.tag_rules[tag_int][1])
                 cv2.putText(img, f"Erlaubt: {allowed_txt}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200,200,200), 1)
             elif tag_int in self.edge_tags:
-                cv2.putText(img, f"Info: Kanten-Marker (Keine Lenkung)", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200,200,200), 1)
+                cv2.putText(img, f"Tor erkannt: Kanten-Marker", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200,200,200), 1)
         
         cv2.putText(img, f"ENTSCHEIDUNG: {self.current_decision.upper()}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
 
-        # WICHTIG: Hier kein imshow / waitKey mehr! Nur als Display-Variable speichern:
         self.display_image = img
+        self._publish_tags_debug_image(img)
 
     def run(self):
-        cv2.namedWindow("Tags Detection (Rechte Seite)", cv2.WINDOW_NORMAL)
-        rate = rospy.Rate(10)
-        
-        # Das Zeichnen passiert jetzt blockierungsfrei im Main-Thread (Schützt vor Abstürzen!)
-        while not rospy.is_shutdown():
-            if self.display_image is not None:
-                cv2.imshow("Tags Detection (Rechte Seite)", self.display_image)
-                
-                # Lauscht auf Tastatur-Eingaben im OpenCV Fenster
-                key = cv2.waitKey(50) & 0xFF
-                if key == ord('q') or key == 27:
-                    rospy.signal_shutdown("Benutzer hat das Fenster geschlossen.")
-                    
-            rate.sleep()
+        rospy.spin()
 
 if __name__ == "__main__":
     node = DetectTagsNode("detect_tags_node")

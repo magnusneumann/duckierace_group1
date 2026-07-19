@@ -15,7 +15,7 @@ class TopologicalMappingNode:
         self._vehicle_name = os.environ.get("VEHICLE_NAME", "duckiebot")
 
         package_root = os.path.dirname(os.path.dirname(__file__))
-        default_config = os.path.join(package_root, "config", "challenge4_graph.json")
+        default_config = os.path.join(package_root, "config", "graph.json")
         default_mapping = os.path.join(package_root, "config", "challenge4_mapping.json")
 
         self.config_path = rospy.get_param("~config_path", default_config)
@@ -34,6 +34,9 @@ class TopologicalMappingNode:
             "~incoming_port",
             self.config.get("start", {}).get("incoming_port", 3),
         ))
+        self.auto_export_mapping = rospy.get_param("~auto_export_mapping", False)
+        self.auto_start_navigation = rospy.get_param("~auto_start_navigation", False)
+        self.navigation_start_delay = float(rospy.get_param("~navigation_start_delay", 0.0))
         self.current_edge = None
         self.expected_next_node = None
         self.edge_started_at = None
@@ -41,6 +44,7 @@ class TopologicalMappingNode:
         self.active = False
         self.visited_edges = set()
         self.pending_exit_ports = []
+        self.mapping_exported = False
 
         self.pub_turn = rospy.Publisher(
             f"/{self._vehicle_name}/intersection/turn_decision",
@@ -88,18 +92,56 @@ class TopologicalMappingNode:
     def srv_export(self, req):
         try:
             self.graph.save_mapping(self.mapping_path, self.state_dict())
+            if self.auto_start_navigation:
+                self.start_navigation_after_delay()
             return TriggerResponse(True, f"Mapping gespeichert: {self.mapping_path}")
         except Exception as e:
             return TriggerResponse(False, f"Mapping konnte nicht gespeichert werden: {e}")
 
+    def start_navigation_after_delay(self):
+        if self.navigation_start_delay > 0.0:
+            rospy.sleep(self.navigation_start_delay)
+        rospy.loginfo("Starte automatische Navigation nach abgeschlossenem Mapping...")
+        try:
+            rospy.wait_for_service(f"/{self._vehicle_name}/navigation/load_mapping", timeout=5.0)
+            rospy.wait_for_service(f"/{self._vehicle_name}/navigation/start", timeout=5.0)
+            load_mapping = rospy.ServiceProxy(f"/{self._vehicle_name}/navigation/load_mapping", Trigger)
+            start_navigation = rospy.ServiceProxy(f"/{self._vehicle_name}/navigation/start", Trigger)
+            load_mapping()
+            start_navigation()
+            rospy.loginfo("Navigation gestartet.")
+        except Exception as e:
+            rospy.logerr(f"Automatische Navigation konnte nicht gestartet werden: {e}")
+
+    def finish_mapping(self):
+        if self.mapping_exported:
+            return
+        self.mapping_exported = True
+        if self.auto_export_mapping or self.auto_start_navigation:
+            try:
+                self.graph.save_mapping(self.mapping_path, self.state_dict())
+                rospy.loginfo(f"Mapping automatisch gespeichert: {self.mapping_path}")
+                if self.auto_start_navigation:
+                    self.start_navigation_after_delay()
+            except Exception as e:
+                rospy.logerr(f"Automatischer Mapping-Export fehlgeschlagen: {e}")
+
     def cb_tag(self, msg):
         if not self.active or not is_gate_tag(msg.data) or self.current_edge is None:
             return
-        self.graph.set_gate(self.current_edge, int(msg.data))
-        self.publish_status({"mapped_gate": int(msg.data), "edge": self.current_edge})
+        gate_id = int(msg.data)
+        self.graph.set_gate(self.current_edge, gate_id)
+        rospy.loginfo(f"Tor erkannt: Kante {self.current_edge}, Gate-Tag {gate_id} gespeichert.")
+        self.publish_status({
+            "mapped_gate": gate_id,
+            "edge": self.current_edge,
+            "mapped_tag": gate_id,
+            "status": "edge_tag_stored",
+        })
 
     def cb_turn_completed(self, msg):
         if self.active and self.current_edge is not None:
+            # Nur die Strassenfahrt messen; das zeitvariable Kreuzungsmanoever ist beendet.
             self.edge_started_at = rospy.Time.now()
             self.edge_drive_started = True
 
@@ -116,6 +158,7 @@ class TopologicalMappingNode:
 
         edge = self.graph.edges[self.current_edge]
         self.current_node = self.expected_next_node
+        # Der Zielport der gerade befahrenen Kante ist der Eingangsport am neuen Knoten.
         if self.current_node == edge["node_a"]:
             self.incoming_port = edge["port_a"]
         else:
@@ -143,6 +186,7 @@ class TopologicalMappingNode:
                 "visited_edges": len(self.visited_edges),
                 "total_edges": len(self.graph.edges),
             })
+            self.finish_mapping()
             return
 
         next_node, next_incoming_port, edge_key = self.graph.neighbor(self.current_node, exit_port)
@@ -150,6 +194,8 @@ class TopologicalMappingNode:
         self.expected_next_node = next_node
         self.edge_started_at = None
         self.edge_drive_started = False
+
+        rospy.loginfo(f"Aktuelle Kante: {self.current_edge} von Knoten {self.current_node} nach {self.expected_next_node} über Port {exit_port}.")
 
         turn = turn_from_ports(self.incoming_port, exit_port)
         self.pub_turn.publish(String(data=turn))
@@ -174,6 +220,8 @@ class TopologicalMappingNode:
             if candidate not in self.visited_edges:
                 return port
 
+        # Sind lokal alle Kanten besucht, fuehrt der kuerzeste bekannte Weg zum
+        # naechsten Knoten mit einer noch unbesuchten Kante.
         best_path = None
         best_cost = None
         for node in self.graph.adjacency.keys():
