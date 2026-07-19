@@ -136,8 +136,12 @@ class TopologicalMappingNode:
             "mapped_gate": gate_id,
             "edge": self.current_edge,
             "mapped_tag": gate_id,
+            "mapped_edges": self._mapped_edges_dict(),
             "status": "edge_tag_stored",
         })
+
+    def _mapped_edges_dict(self):
+        return {str(gate): edge for gate, edge in self.graph.gates_to_edges().items()}
 
     def cb_turn_completed(self, msg):
         if self.active and self.current_edge is not None:

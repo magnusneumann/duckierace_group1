@@ -8,7 +8,7 @@ sleep 3
 
 rosrun map_and_nav switch_control_node.py &
 rosrun map_and_nav cross_intersection_node.py &
-python3 src/packages/map_and_navmapping_topological_node.py &
+python3 src/packages/map_and_nav/src/mapping_topological_node.py &
 rosrun follow_lane dashboard_node.py &
 
 sleep 4

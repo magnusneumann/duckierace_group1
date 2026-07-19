@@ -367,7 +367,7 @@ class DuckAvoidanceNode:
                         self.escape_direction = 1.0
                         self.last_inversion_time = current_time
 
-                cmd.omega = 1.6 * self.escape_direction
+                cmd.omega = 1.5 * self.escape_direction
 
             elif self.state in ["DRIVING", "COOLDOWN"]:
                 # 1. Stufe: Harte Spurkorrektur in Zone 1

@@ -6,8 +6,7 @@ Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container aus
 das dockerfile wurde erweitert, alle Pakete müssten automatisch installiert werden. 
 
 zuvor musst nachträglich installiert werden:
-apt-get update && apt-get install -y tmux python3-pip && python3 -m pip install --upgrade pip && python3 -m pip install --upgrade numpy ultralytics shapely pupil-apriltags
-dazu noch onnx und onnxruntime installieren 
+apt-get update && apt-get install -y tmux python3-pip && python3 -m pip install --upgrade pip && python3 -m pip install --upgrade numpy ultralytics shapely pupil-apriltags && python3 -m pip install onnx onnxruntime
 
 ## Auf Bot einloggen im Terminal (Container läuft && im DuckieNetz):
 ./docker_login.sh dann Botnamen eingeben

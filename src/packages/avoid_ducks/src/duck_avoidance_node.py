@@ -41,8 +41,8 @@ class DuckAvoidanceNode:
         # --- MASKEN PARAMETER ---
         self.hsv_limits = {}
         self._load_hsv_config()
-        self.pixel_threshold = 100 # Ab wann gilt ein Trapez als durch Linien blockiert?
-
+        self.pixel_threshold_white = 150 # Ab wann gilt ein Trapez als durch Linien blockiert?
+        self.pixel_threshold_yellow = 300
         # --- ODOMETRIE ---
         self.theta = 0.0
         self.ticks_left = None
@@ -69,7 +69,7 @@ class DuckAvoidanceNode:
         self.z2_yellow_history = deque(maxlen=self.buffer_size)
         self.wiggle_direction = -1.0
         self.last_wiggle_time = time.monotonic()
-        self.wiggle_power = 0.07 # mit 0.8 ist der wiggel sichtbar und effektiv, aber es ist halt weniger schön, je nach akkustand sinnvoll
+        self.wiggle_power = 0.08 #0.66 # mit 0.8 ist der wiggel sichtbar und effektiv, aber es ist halt weniger schön, je nach akkustand sinnvoll
         # Tracking für Rotationsursache und Inversions-Schutz
         self.rotation_reason = None
         # use monotonic wall-clock for inversion cooldown (robust to /use_sim_time)
@@ -288,24 +288,24 @@ class DuckAvoidanceNode:
             eval_white = raw_white
 
             # Entscheidung anhand der evaluierten Werte treffen
-            if eval_white > self.pixel_threshold:
+            if eval_white > self.pixel_threshold_white:
                 self.zones_status[i]["white"] = True
                 undistorted[cv2.bitwise_and(mask_white, trap_mask) > 0] = (255, 0, 0)
                 
-            if eval_yellow > self.pixel_threshold:
+            if eval_yellow > self.pixel_threshold_yellow:
                 self.zones_status[i]["yellow"] = True
                 undistorted[cv2.bitwise_and(mask_yellow, trap_mask) > 0] = (0, 165, 255)
-            # Weiß (Rechte Grenze -> Zwingt uns nach Links)
-            pixels_white = cv2.countNonZero(cv2.bitwise_and(mask_white, trap_mask))
-            if pixels_white > self.pixel_threshold:
-                self.zones_status[i]["white"] = True
-                undistorted[cv2.bitwise_and(mask_white, trap_mask) > 0] = (255, 0, 0) # Blau für Weiß-Erkennung
-                
-            # Gelb (Linke Grenze -> Zwingt uns nach Rechts)
-            pixels_yellow = cv2.countNonZero(cv2.bitwise_and(mask_yellow, trap_mask))
-            if pixels_yellow > self.pixel_threshold:
-                self.zones_status[i]["yellow"] = True
-                undistorted[cv2.bitwise_and(mask_yellow, trap_mask) > 0] = (0, 165, 255) # Orange für Gelb-Erkennung
+            ## Weiß (Rechte Grenze -> Zwingt uns nach Links)
+            #pixels_white = cv2.countNonZero(cv2.bitwise_and(mask_white, trap_mask))
+            #if pixels_white > self.pixel_threshold:
+            #    self.zones_status[i]["white"] = True
+            #    undistorted[cv2.bitwise_and(mask_white, trap_mask) > 0] = (255, 0, 0) # Blau für Weiß-Erkennung
+            #    
+            ## Gelb (Linke Grenze -> Zwingt uns nach Rechts)
+            #pixels_yellow = cv2.countNonZero(cv2.bitwise_and(mask_yellow, trap_mask))
+            #if pixels_yellow > self.pixel_threshold:
+            #    self.zones_status[i]["yellow"] = True
+            #    undistorted[cv2.bitwise_and(mask_yellow, trap_mask) > 0] = (0, 165, 255) # Orange für Gelb-Erkennung
 
             # C) Debug Rahmen zeichnen
             if self.zones_status[i]["white"] or self.zones_status[i]["yellow"] or self.zones_status[i]["duck"]:
@@ -405,20 +405,20 @@ class DuckAvoidanceNode:
                         self.escape_direction = 1.0
                         self.last_inversion_time = current_time
 
-                cmd.omega = 1.6 * self.escape_direction
+                cmd.omega = 1.5 * self.escape_direction
 
             elif self.state == "DRIVING":
                 # Spurkorrektur in Zone 1
                 if (z1["white"] or z1["yellow"]) and not z1["duck"]:
-                    cmd.v = 0.15
+                    cmd.v = 0.1 #.15
                     if z1["white"]:
-                        cmd.omega = 2.7
+                        cmd.omega = 1.7 #2.7
                     elif z1["yellow"]:
-                        cmd.omega = -2.7
+                        cmd.omega = -1.7 #2.7
                 
                 # Zone 2: Drosseln und Ausweichen
                 elif z2["duck"]:
-                    cmd.v = 0.11 
+                    cmd.v = 0.12 
                     if z2["white"]:
                         cmd.omega = 1.2 
                     elif z2["yellow"]:
@@ -429,7 +429,7 @@ class DuckAvoidanceNode:
                         else:
                             cmd.omega = -1.3  
                 else:
-                    cmd.v = 0.15 
+                    cmd.v = 0.2
                     cmd.omega = 0.0
 
             elif self.state == "DRIVE_FORWARD_DISTANCE":
