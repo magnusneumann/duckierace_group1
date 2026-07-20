@@ -375,24 +375,6 @@ class DuckAvoidanceNode:
                     self.last_wiggle_time = current_time
                 cmd.v = 1.0*self.wiggle_power*self.wiggle_direction
 
-                # INVERTIERUNGS-SCHUTZ: Läuft jetzt JEDEN Frame, 
-                # egal ob die Ente noch in Zone 1 ist oder nicht!
-                # wenn eine ente im bild ist/duck in z0 - z1 -z2 ist, ist der block genau richtig.
-                # wenn aber keine ente im bild ist, würde es reichen zu invertieren, wenn z0 gelb/weiß beinhaltet, es gibt situationen, in denen in z0 weiß ist und in der ferne in z1 gelb ist, das führt in einen endlos loop
-                #dt = current_time - self.last_inversion_time
-                #rospy.logdebug(f"Inversion check dt={dt:.3f}s, escape={self.escape_direction}")
-                #if dt > 1.0: 
-                #    if self.escape_direction == 1.0 and z1["yellow"]:
-                #        rospy.logwarn("Linksdrehung wegen GELB auf RECHTS wechseln")
-                #        self.escape_direction = -1.0
-                #        self.last_inversion_time = current_time
-                #    
-                #    elif self.escape_direction == -1.0 and z1["white"]:
-                #        rospy.logwarn("Rechtsdrehung wegen WEISS auf LINKS wechseln")
-                #        self.escape_direction = 1.0
-                #        self.last_inversion_time = current_time
-                #
-                #cmd.omega = 1.5 * self.escape_direction
                 # Invertierungsschutz
                 dt = current_time - self.last_inversion_time
                 rospy.logdebug(f"Inversion check dt={dt:.3f}s, escape={self.escape_direction}")
