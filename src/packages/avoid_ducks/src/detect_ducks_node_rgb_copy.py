@@ -89,8 +89,7 @@ class DetectDucksNode:
         # ==========================================
         # 2. INFERENZ AUF ENTZERRTEM BILD
         # ==========================================
-        gray = cv2.cvtColor(undistorted, cv2.COLOR_BGR2GRAY)
-        results = self.model.predict(source=gray, task="detect", conf=0.5, verbose=False, imgsz=640)
+        results = self.model.predict(source=undistorted, task="detect", conf=0.5, verbose=False, imgsz=320)
         obstacle_msg = Polygon()
         
         # TUNING WERT: y=0 ist Himmel, y=480 ist Stoßfänger.
