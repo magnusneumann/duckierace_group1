@@ -52,7 +52,7 @@ class DetectDucksNode:
     def cb_image(self, msg):
         # Frame-Skipping (Nur jedes 3. Bild verarbeiten, um CPU zu schonen)
         self.frame_counter += 1
-        if self.frame_counter % 3 != 0:
+        if self.frame_counter % 2 != 0:
             return  
             
         np_arr = np.frombuffer(msg.data, np.uint8)

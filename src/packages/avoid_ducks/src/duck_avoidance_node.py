@@ -64,7 +64,7 @@ class DuckAvoidanceNode:
         self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(3)] # Status für Zone 1, 2, 3
         self.duck_bboxes = [] # Eingehende Enten [(x1,y1,x2,y2), ...]
         self.display_image = None
-        self.buffer_size = 17
+        self.buffer_size = 3 #17
         # Puffer exklusiv für Zone 2
         self.z2_yellow_history = deque(maxlen=self.buffer_size)
         self.wiggle_direction = -1.0
@@ -254,9 +254,6 @@ class DuckAvoidanceNode:
             cv2.rectangle(mask_yellow, (x1, y1), (x2, y2), 0, -1) # Setzt BBox-Bereich in Maske auf 0 (Schwarz)
             cv2.rectangle(undistorted, (x1, y1), (x2, y2), (0, 255, 0), 2) # Grün im Debug-Bild
 
-        # Kombinierte Linien-Maske
-        mask_lines = cv2.bitwise_or(mask_white, mask_yellow)
-
         # 3. Detaillierte Zonen evaluieren
         self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(3)]
         
@@ -279,7 +276,7 @@ class DuckAvoidanceNode:
             if i == 2: 
                 # Zone 2 Gelb: In den Puffer schieben und Median berechnen
                 self.z2_yellow_history.append(raw_yellow)
-                eval_yellow = np.median(self.z2_yellow_history)
+                eval_yellow = np.min(self.z2_yellow_history) #np.median
             else:
                 # Zone 0, 1 und 3 Gelb: Harte Echtzeit
                 eval_yellow = raw_yellow
@@ -295,18 +292,7 @@ class DuckAvoidanceNode:
             if eval_yellow > self.pixel_threshold_yellow:
                 self.zones_status[i]["yellow"] = True
                 undistorted[cv2.bitwise_and(mask_yellow, trap_mask) > 0] = (0, 165, 255)
-            ## Weiß (Rechte Grenze -> Zwingt uns nach Links)
-            #pixels_white = cv2.countNonZero(cv2.bitwise_and(mask_white, trap_mask))
-            #if pixels_white > self.pixel_threshold:
-            #    self.zones_status[i]["white"] = True
-            #    undistorted[cv2.bitwise_and(mask_white, trap_mask) > 0] = (255, 0, 0) # Blau für Weiß-Erkennung
-            #    
-            ## Gelb (Linke Grenze -> Zwingt uns nach Rechts)
-            #pixels_yellow = cv2.countNonZero(cv2.bitwise_and(mask_yellow, trap_mask))
-            #if pixels_yellow > self.pixel_threshold:
-            #    self.zones_status[i]["yellow"] = True
-            #    undistorted[cv2.bitwise_and(mask_yellow, trap_mask) > 0] = (0, 165, 255) # Orange für Gelb-Erkennung
-
+            
             # C) Debug Rahmen zeichnen
             if self.zones_status[i]["white"] or self.zones_status[i]["yellow"] or self.zones_status[i]["duck"]:
                 cv2.polylines(undistorted, [trap_pts], isClosed=True, color=(0, 0, 255), thickness=2) # Rot = Gefahr
@@ -332,7 +318,6 @@ class DuckAvoidanceNode:
             z0 = self.zones_status[0]
             z1 = self.zones_status[1]
             z2 = self.zones_status[2]
-            #z3 = self.zones_status[3]
 
             # --- HILFSFUNKTION: Größte Ente analysieren ---
             duck_center_x = IMAGE_CENTER_X
@@ -366,7 +351,7 @@ class DuckAvoidanceNode:
                     self.escape_direction = -1.0 if duck_center_x < IMAGE_CENTER_X else 1.0
 
             # Trigger C: Abbruch der Rotation (Alles frei)
-            elif self.state == "ROTATING" and not z1["duck"] and not z2["duck"] and not z1["yellow"] and not z1["white"]:
+            elif self.state == "ROTATING" and not z1["duck"] and not z0["yellow"] and not z0["white"]: #z1 yellow z1 white davor and not z2["duck"]
                 if self.rotation_reason == "duck":
                     rospy.loginfo("Korridor frei. An Ente vorbei fahren.")
                     self._drive_target_distance = 0.15
@@ -392,18 +377,54 @@ class DuckAvoidanceNode:
 
                 # INVERTIERUNGS-SCHUTZ: Läuft jetzt JEDEN Frame, 
                 # egal ob die Ente noch in Zone 1 ist oder nicht!
+                # wenn eine ente im bild ist/duck in z0 - z1 -z2 ist, ist der block genau richtig.
+                # wenn aber keine ente im bild ist, würde es reichen zu invertieren, wenn z0 gelb/weiß beinhaltet, es gibt situationen, in denen in z0 weiß ist und in der ferne in z1 gelb ist, das führt in einen endlos loop
+                #dt = current_time - self.last_inversion_time
+                #rospy.logdebug(f"Inversion check dt={dt:.3f}s, escape={self.escape_direction}")
+                #if dt > 1.0: 
+                #    if self.escape_direction == 1.0 and z1["yellow"]:
+                #        rospy.logwarn("Linksdrehung wegen GELB auf RECHTS wechseln")
+                #        self.escape_direction = -1.0
+                #        self.last_inversion_time = current_time
+                #    
+                #    elif self.escape_direction == -1.0 and z1["white"]:
+                #        rospy.logwarn("Rechtsdrehung wegen WEISS auf LINKS wechseln")
+                #        self.escape_direction = 1.0
+                #        self.last_inversion_time = current_time
+                #
+                #cmd.omega = 1.5 * self.escape_direction
+                # Invertierungsschutz
                 dt = current_time - self.last_inversion_time
                 rospy.logdebug(f"Inversion check dt={dt:.3f}s, escape={self.escape_direction}")
+                
+                # Unterscheidung: Gibt es aktuell eine Ente im Bild?
+                # (Wir nutzen .get(), damit der Code nicht abstürzt, falls "duck" entfernt wurde)
+                duck_in_sight = z0.get("duck", False) or z1.get("duck", False) or z2.get("duck", False)
+                
                 if dt > 1.0: 
-                    if self.escape_direction == 1.0 and z2["yellow"]:
-                        rospy.logwarn("Linksdrehung wegen GELB auf RECHTS wechseln")
-                        self.escape_direction = -1.0
-                        self.last_inversion_time = current_time
-                    
-                    elif self.escape_direction == -1.0 and z2["white"]:
-                        rospy.logwarn("Rechtsdrehung wegen WEISS auf LINKS wechseln")
-                        self.escape_direction = 1.0
-                        self.last_inversion_time = current_time
+                    if duck_in_sight:
+                        # ENTEN-MODUS: Wir blicken voraus (z1), um beim Umfahren nicht in die Bande zu krachen.
+                        if self.escape_direction == 1.0 and z1["yellow"]:
+                            rospy.logwarn("Linksdrehung wegen GELB (z1) auf RECHTS wechseln")
+                            self.escape_direction = -1.0
+                            self.last_inversion_time = current_time
+                        
+                        elif self.escape_direction == -1.0 and z1["white"]:
+                            rospy.logwarn("Rechtsdrehung wegen WEISS (z1) auf LINKS wechseln")
+                            self.escape_direction = 1.0
+                            self.last_inversion_time = current_time
+                    else:
+                        # LINIEN-MODUS: Wir schauen nur direkt vor den Bot (z0).
+                        # Verhindert Endlosschleifen in scharfen Kurven!
+                        if self.escape_direction == 1.0 and z0["yellow"]:
+                            rospy.logwarn("Linksdrehung wegen GELB (z0) auf RECHTS wechseln")
+                            self.escape_direction = -1.0
+                            self.last_inversion_time = current_time
+                        
+                        elif self.escape_direction == -1.0 and z0["white"]:
+                            rospy.logwarn("Rechtsdrehung wegen WEISS (z0) auf LINKS wechseln")
+                            self.escape_direction = 1.0
+                            self.last_inversion_time = current_time
 
                 cmd.omega = 1.5 * self.escape_direction
 
