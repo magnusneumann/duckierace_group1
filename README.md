@@ -1,92 +1,126 @@
-# DuckieRace
-## Duckie Challange 2026 - Fach Robogistics
+# DuckieRace 🦆🏁
+**Duckie Challenge 2026 – Fach Robogistics**
 
-### Nach dem Klonen: 
-Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container auszuführen,
-das dockerfile wurde erweitert, alle Pakete müssten automatisch installiert werden. 
+Willkommen im Haupt-Repository für die Duckietown-Challenges! Dieses Projekt umfasst autonomes Fahren, Kollisionsvermeidung, topologisches Mapping und zielgesteuerte Navigation.
 
-in globalem terminal im projekthauptverzeichnis chmod +x -R .(um alle .py Dateien ausführbar zu machen)
+---
 
-in vsc terminal catkin_make
+## 📖 Detaillierte Paket-Dokumentationen
+Für ein tiefes technisches Verständnis der implementierten Module (Perzeption, Regelung, State Machines, YOLO & Homographie) besuche bitte die detaillierten READMEs in den jeweiligen Source-Verzeichnissen:
 
-zuvor musst nachträglich installiert werden:
-apt-get update && apt-get install -y tmux python3-pip && python3 -m pip install --upgrade pip && python3 -m pip install --upgrade numpy ultralytics shapely pupil-apriltags && python3 -m pip install onnx onnxruntime
+1. **[Challenge 1 & 2: Follow Lane & Intersections](src/packages/follow_lane/README.md)**
+2. **[Challenge 3: Avoid Ducks (YOLO & Zonen)](src/packages/avoid_ducks/README.md)**
+3. **[Challenge 4: Map & Navigation (Dijkstra)](src/packages/map_and_nav/README.md)**
 
-## Auf Bot einloggen im Terminal (Container läuft && im DuckieNetz):
-./docker_login.sh dann Botnamen eingeben
+---
 
-### In diesem Terminal scrollen:
-STRG + B, :, set -g mouse on
+## 🛠️ Installation & Setup (Nach dem Klonen)
 
+1. **Dev Container:** 
+   Installiere die Erweiterung "Dev Containers" in VS Code. Drücke `STRG + SHIFT + P` und wähle **Reopen in Container**. Das Dockerfile wurde so erweitert, dass alle Standard-Pakete automatisch installiert werden sollten.
 
+2. **Fehlende Abhängigkeiten:**
+   Falls Pakete fehlen, führe folgenden Befehl im Container-Terminal aus:
+   ```bash
+   apt-get update && apt-get install -y tmux python3-pip
+   python3 -m pip install --upgrade pip
+   python3 -m pip install --upgrade numpy ultralytics shapely pupil-apriltags onnx onnxruntime
+   ```
 
-## Bot auf Parkour fahren lassen:
-launchers/follow_lane.sh
+3. **Rechte vergeben:**
+   Im globalen Terminal (Projekthauptverzeichnis) ausführen, um alle Python-Skripte ausführbar zu machen:
+   ```bash
+   chmod +x -R .
+   ```
 
-## Bot auf Wendehammer mit Enten fahren lassen:
-launchers/avoid_ducks.sh
+4. **Kompilieren:**
+   Führe in deinem VS Code Terminal den Build aus:
+   ```bash
+   catkin_make
+   ```
 
-## Navi zum Fahren nutzen:
-# in Terminal 1
-launchers/navigation.sh
-# in Terminal 2 Knoten beliebig viele
-rostopic pub /VEHIVLENAME/navigation/route std_msgs/String "data: '[7, 9, 8]'"
+---
 
+## 💻 Auf dem Bot einloggen
 
-## Bot den Parkour mappen lassen und als Service auf Kanten gemappte Punkte abfahren:
-launchers/mapping.sh
-### Mapping Starten: (löscht den aktuellen Graphen und fängt an aufzuzeichnen)
-rosservice call /duckie_bot_NAME/mapping/start
-### Karte Speichern (Export):
-rosservice call /duckie_bot_NAME/mapping/export
+Sobald der Container läuft und du dich im DuckieNetz befindest, verbinde dich mit dem Roboter:
+```bash
+./docker_login.sh
+```
+*(Anschließend den Namen deines Roboters eingeben)*
 
+### Wichtige Terminal & Tmux Shortcuts:
+- **Terminal wechseln:** `STRG + B`, dann eine `Pfeiltaste`.
+- **Maus / Scrollen aktivieren:** `STRG + B`, dann `:` drücken und `set -g mouse on` eingeben.
 
+---
 
+## 🚀 Die Challenges Starten
 
+Ersetze in den folgenden Befehlen `VEHICLE_NAME` immer durch den echten Namen deines Roboters (z.B. `duckiebot` oder `gundel`)!
 
-### ggf interessant:
+### Challenge 1 & 2: Follow Lane (Parkour)
+Startet das Basis-Spurfolgen inklusive Kreuzungserkennung:
+```bash
+bash launchers/follow_lane.sh
+```
 
-Terminal wechseln:
-STRG + B, Pfeiltaste
+### Challenge 3: Avoid Ducks (Wendehammer)
+Startet das Fahren mit integrierter YOLO-Hinderniserkennung (Enten ausweichen):
+```bash
+bash launchers/avoid_ducks.sh
+```
 
-Docker darf GUI's öffnen:
-xhost +local:root im gobalen Terminal
+### Challenge 4: Mapping (Topologische Karte erstellen)
+Startet die Exploration, bei der der Roboter den Graphen abfährt und Gate-Schilder verortet:
+```bash
+bash launchers/mapping.sh
+```
+- **Mapping manuell starten:** (Löscht alte Karten und beginnt frisch)
+  ```bash
+  rosservice call /VEHICLE_NAME/mapping4/start
+  ```
+- **Karte speichern (Export):**
+  ```bash
+  rosservice call /VEHICLE_NAME/mapping4/export
+  ```
 
-ChArUco kalibrierung während der charuco_calibration_node läuft:
-rosservice call /VEHICLENAME/calibration/save_homography
+*(Hinweis: Automatisches Speichern beim Schließen per `Strg+C` ist ebenfalls eingebaut!)*
 
-wenn ein Knoten rumheult, dass er kein Display findet, obwohl es ein Display gibt
-export DISPLAY=:0
+### Challenge 4: Navigation (Ziele abfahren)
+Sobald das Mapping abgeschlossen ist, nutzt du den Navigationsmodus, um Schilder in einer bestimmten Reihenfolge abzufahren:
+```bash
+# Terminal 1: Startet die Navigation (Roboter ist im Standby)
+bash launchers/navigation.sh
 
-## Challenge 4: Topologisches Mapping und Gate-Navigation
+# Terminal 2: Route beauftragen (z.B. Gate 7, dann 9, dann 8)
+rostopic pub /VEHICLE_NAME/navigation/route std_msgs/String "data: '[7, 9, 8]'"
+```
 
-Konfiguration:
-`src/packages/map_and_nav/config/graph.json`
+---
 
-Starten:
-`bash launchers/mapping.sh` und `bash launchers/navigation.sh`
+## 💡 Nützliche Tipps & Trouble-Shooting
 
-Topologisches Mapping starten:
-`rosservice call /duckie_bot_NAME/mapping4/start`
+- **GUI-Fenster öffnen sich nicht (Docker Fehler):**
+  Führe im *globalen* Terminal (außerhalb des Containers) folgenden Befehl aus, um dem Docker Zugriff auf den Bildschirm zu gewähren:
+  ```bash
+  xhost +local:root
+  ```
+  Zusätzlich, falls ein Node meldet, er finde kein Display:
+  ```bash
+  export DISPLAY=:0
+  ```
 
-Mapping mit Gate-Zuordnungen und Fahrzeiten speichern:
-`rosservice call /duckie_bot_NAME/mapping4/export`
+- **ChArUco Kamera-Kalibrierung:**
+  Während der `charuco_calibration_node` läuft, kannst du die Homographie mit folgendem Service speichern:
+  ```bash
+  rosservice call /VEHICLE_NAME/calibration/save_homography
+  ```
 
-Optional: Automatischer Export und Navigationstart nach vollständigem Mapping
-- `rosparam set /mapping_topological_node/auto_export_mapping true`
-- `rosparam set /mapping_topological_node/auto_start_navigation true`
-- `rosparam set /mapping_topological_node/navigation_start_delay 2.0`
-
-Mapping fuer Navigation laden:
-`rosservice call /duckie_bot_NAME/navigation/load_mapping`
-
-Navigation mit der konfigurierten Gate-Reihenfolge starten:
-`rosservice call /duckie_bot_NAME/navigation/start`
-
-Gate-Reihenfolge zur Laufzeit setzen:
-`rostopic pub -1 /duckie_bot_NAME/navigation/route std_msgs/String "data: '[5, 9, 6]'"`
-
-Separate Launch Scripts:
-- Mapping only: `bash launchers/mapping.sh`
-- Navigation only: `bash launchers/navigation.sh`
-
+- **Optionale Mapping-Parameter (Challenge 4):**
+  Wenn du möchtest, dass der Roboter die Karte automatisch exportiert und sofort danach ohne Terminal-Eingriff in den Navigations-Modus wechselt, setze diese Parameter:
+  ```bash
+  rosparam set /mapping_topological_node/auto_export_mapping true
+  rosparam set /mapping_topological_node/auto_start_navigation true
+  rosparam set /mapping_topological_node/navigation_start_delay 2.0
+  ```
