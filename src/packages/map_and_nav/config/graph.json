@@ -18,7 +18,7 @@
     }
   },
   "start": {
-    "current_node": "B",
-    "incoming_port": 2
+    "current_node": "A",
+    "incoming_port": 1
   }
 }
