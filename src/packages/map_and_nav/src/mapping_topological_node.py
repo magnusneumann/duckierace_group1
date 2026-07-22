@@ -74,6 +74,8 @@ class TopologicalMappingNode:
         rospy.Service(f"/{self._vehicle_name}/mapping4/export", Trigger, self.srv_export)
         rospy.Service(f"/{self._vehicle_name}/mapping4/stop", Trigger, self.srv_stop)
 
+        rospy.on_shutdown(self.finish_mapping)
+
         rospy.loginfo("Challenge-4 Topological Mapping bereit. Starte automatisches Mapping!")
         self.choose_next_edge()
 
