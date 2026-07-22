@@ -10,7 +10,7 @@
       "port_a": 1,
       "port_b": 1,
       "samples": 1,
-      "travel_time": 8.559503794
+      "travel_time": 16.731829405
     },
     "A.2--C.2": {
       "gates": [
@@ -21,7 +21,7 @@
       "port_a": 2,
       "port_b": 2,
       "samples": 1,
-      "travel_time": 6.650658131
+      "travel_time": 25.741259813
     },
     "A.3--C.1": {
       "gates": [
@@ -32,7 +32,7 @@
       "port_a": 3,
       "port_b": 1,
       "samples": 2,
-      "travel_time": 3.501748204
+      "travel_time": 12.032754779
     },
     "A.4--B.2": {
       "gates": [
@@ -43,7 +43,7 @@
       "port_a": 4,
       "port_b": 2,
       "samples": 1,
-      "travel_time": 3.134511232
+      "travel_time": 18.443988085
     },
     "B.3--C.4": {
       "gates": [
@@ -54,7 +54,7 @@
       "port_a": 3,
       "port_b": 4,
       "samples": 1,
-      "travel_time": 8.701474428000001
+      "travel_time": 16.656281233
     }
   },
   "graph": {
@@ -121,5 +121,5 @@
     "expected_next_node": null,
     "incoming_port": 3
   },
-  "updated_at": 1784717681.3045826
+  "updated_at": 1784733557.8919382
 }

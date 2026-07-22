@@ -55,6 +55,7 @@ class DebugNavigationNode:
         }
         
         self.current_node = None
+        self.incoming_port = None
         self.current_edge = None
         self.edge_drive_started = False
         self.route_steps = []
@@ -69,6 +70,7 @@ class DebugNavigationNode:
         try:
             status = json.loads(msg.data)
             self.current_node = status.get("current_node")
+            self.incoming_port = status.get("incoming_port")
             self.current_edge = status.get("current_edge")
             self.edge_drive_started = status.get("edge_drive_started", False)
             self.route_steps = status.get("route_steps", [])
@@ -178,13 +180,23 @@ class DebugNavigationNode:
                 ax.text(label_x, label_y, label, horizontalalignment="center", verticalalignment="center", 
                         bbox=dict(facecolor="white", alpha=0.9, edgecolor="gray"), fontsize=10)
 
+        # Startposition und Zielroute in Titel anzeigen
+        start_info = f"{self.current_node}/P{self.incoming_port}" if self.current_node and self.incoming_port is not None else "--"
+        
         if self.target_gates:
-            ax.set_title(f"Target Route: {self.target_gates}", fontsize=16, fontweight="bold")
+            ax.set_title(f"Start: {start_info} | Target Route: {self.target_gates}", fontsize=14, fontweight="bold")
         else:
-            ax.set_title("Navigation Standby", fontsize=16, fontweight="bold")
+            ax.set_title(f"Start: {start_info} | Navigation Standby", fontsize=14, fontweight="bold")
 
         ax.axis("off")
         self.fig.tight_layout()
+        
+        # Save the current graph state as PNG to the config folder
+        save_path = os.path.join(self.package_root, "config", "challenge4_navigation_graph.png")
+        try:
+            self.fig.savefig(save_path, dpi=100, bbox_inches='tight')
+        except Exception as e:
+            rospy.logwarn_throttle(2.0, f"Konnte Navigation-Graphen nicht speichern: {e}")
         
         self.fig.canvas.draw()
         img = np.frombuffer(self.fig.canvas.tostring_rgb(), dtype=np.uint8)

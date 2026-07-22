@@ -45,6 +45,12 @@ class NavigatorNode:
             "challenge4_mapping.json",
         )
 
+        self.default_route_path = os.path.join(
+            package_dir,
+            "config",
+            "default_route.json",
+        )
+
         # ----------------------------------------------------------
         # Graph laden
         # ----------------------------------------------------------
@@ -141,6 +147,13 @@ class NavigatorNode:
             f"Port {self.incoming_port}"
         )
 
+        # ----------------------------------------------------------
+        # Default-Route laden und autostart prüfen
+        # ----------------------------------------------------------
+        
+        self.load_default_route()
+
+
     # ==============================================================
     # Mapping laden
     # ==============================================================
@@ -171,6 +184,47 @@ class NavigatorNode:
             f"Gates: "
             f"{sorted(self.graph.gates_to_edges().keys())}"
         )
+
+    # ==============================================================
+    # Default-Route laden und autostart
+    # ==============================================================
+
+    def load_default_route(self):
+        """
+        Lädt die Standard-Route aus default_route.json.
+        Falls auto_start=true, wird die Route automatisch gestartet.
+        """
+        try:
+            with open(self.default_route_path, "r") as f:
+                route_config = json.load(f)
+
+            gates = route_config.get("gates", [])
+            auto_start = route_config.get("auto_start", False)
+
+            if not gates:
+                rospy.logwarn("Keine Gates in default_route.json definiert.")
+                return
+
+            rospy.loginfo(
+                f"Default-Route geladen: Gates {gates}, "
+                f"auto_start={auto_start}"
+            )
+
+            if auto_start:
+                rospy.loginfo("Starte Route automatisch...")
+                self.plan_route(gates)
+                self.active = True
+                self.publish_next_turn()
+
+        except FileNotFoundError:
+            rospy.logwarn(
+                f"default_route.json nicht gefunden unter "
+                f"{self.default_route_path}"
+            )
+        except Exception as e:
+            rospy.logerr(
+                f"Fehler beim Laden der default_route.json: {e}"
+            )
 
     # ==============================================================
     # Ziel-Gate empfangen
@@ -491,6 +545,7 @@ class NavigatorNode:
     def publish_status(self):
         status = {
             "current_node": self.current_node,
+            "incoming_port": self.incoming_port,
             "current_edge": self.active_step["edge_key"] if (self.active_step and self.edge_started) else None,
             "edge_drive_started": self.edge_started,
             "route_steps": [step["edge_key"] for step in self.route_steps],
