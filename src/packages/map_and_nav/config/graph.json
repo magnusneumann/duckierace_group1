@@ -18,9 +18,7 @@
     }
   },
   "start": {
-    "current_node": "A",
-    "incoming_port": 3
-  },
-  "target_gates": [6, 7, 8, 9, 10],
-  "default_edge_weight": 1.0
+    "current_node": "B",
+    "incoming_port": 2
+  }
 }
