@@ -17,8 +17,8 @@ class DebugMappingNode:
         self._vehicle_name = os.environ.get("VEHICLE_NAME", "duckiebot")
         
         # Load the graph
-        package_root = os.path.dirname(os.path.dirname(__file__))
-        config_path = os.path.join(package_root, "config", "graph.json")
+        self.package_root = os.path.dirname(os.path.dirname(__file__))
+        config_path = os.path.join(self.package_root, "config", "graph.json")
         with open(config_path, "r") as f:
             self.graph_input = json.load(f)
             
@@ -38,9 +38,9 @@ class DebugMappingNode:
                 }
                 
         self.pos = {
-            "A": (0, 1),
-            "B": (4, 1),
-            "C": (2, -2),
+            "B": (0, 0),
+            "A": (4, 0),
+            "C": (4, 4),
         }
         
         self.current_node = None
@@ -148,11 +148,11 @@ class DebugMappingNode:
                 gates = self.edge_to_gates.get(edge_key, [])
                 gate_str = ", ".join(str(g) for g in sorted(gates))
                 if is_active:
-                    label = f"P{edge['port_a']} <-> P{edge['port_b']}\nACTIVE"
+                    label = f"{edge_key}\nACTIVE"
                 elif visited:
-                    label = f"P{edge['port_a']} <-> P{edge['port_b']}\nGate: {gate_str}" if gate_str else f"P{edge['port_a']} <-> P{edge['port_b']}"
+                    label = f"{edge_key}\nGate: {gate_str}" if gate_str else f"{edge_key}"
                 else:
-                    label = f"P{edge['port_a']} <-> P{edge['port_b']}\nunbekannt"
+                    label = f"{edge_key}\nunbekannt"
                     
                 ax.text(label_x, label_y, label, horizontalalignment="center", verticalalignment="center", 
                         bbox=dict(facecolor="white", alpha=0.9, edgecolor="gray"), fontsize=10)
@@ -160,6 +160,13 @@ class DebugMappingNode:
         ax.axis("off")
         self.fig.tight_layout()
         
+        # Save the current graph state as PNG to the config folder
+        save_path = os.path.join(self.package_root, "config", "challenge4_mapping_graph.png")
+        try:
+            self.fig.savefig(save_path, dpi=100, bbox_inches='tight')
+        except Exception as e:
+            rospy.logwarn_throttle(2.0, f"Konnte Graphen nicht speichern: {e}")
+            
         self.fig.canvas.draw()
         img = np.frombuffer(self.fig.canvas.tostring_rgb(), dtype=np.uint8)
         img = img.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))

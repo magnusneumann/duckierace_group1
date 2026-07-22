@@ -2,49 +2,59 @@
   "default_edge_weight": 1.0,
   "edges": {
     "A.1--B.1": {
-      "gates": [],
+      "gates": [
+        10
+      ],
       "node_a": "A",
       "node_b": "B",
       "port_a": 1,
       "port_b": 1,
       "samples": 1,
-      "travel_time": 16.537866831
+      "travel_time": 15.636407852
     },
     "A.2--C.2": {
-      "gates": [],
+      "gates": [
+        6
+      ],
       "node_a": "A",
       "node_b": "C",
       "port_a": 2,
       "port_b": 2,
       "samples": 1,
-      "travel_time": 17.485720158
+      "travel_time": 18.112418175
     },
     "A.3--C.1": {
-      "gates": [],
+      "gates": [
+        8
+      ],
       "node_a": "A",
       "node_b": "C",
       "port_a": 3,
       "port_b": 1,
       "samples": 1,
-      "travel_time": 3.928520441
+      "travel_time": 3.797056436
     },
     "A.4--B.2": {
-      "gates": [],
+      "gates": [
+        10
+      ],
       "node_a": "A",
       "node_b": "B",
       "port_a": 4,
       "port_b": 2,
       "samples": 1,
-      "travel_time": 3.336252689
+      "travel_time": 3.763114452
     },
     "B.3--C.4": {
-      "gates": [],
+      "gates": [
+        9
+      ],
       "node_a": "B",
       "node_b": "C",
       "port_a": 3,
       "port_b": 4,
       "samples": 1,
-      "travel_time": 9.932693243
+      "travel_time": 14.953577757
     }
   },
   "graph": {
@@ -111,5 +121,5 @@
     "expected_next_node": null,
     "incoming_port": 4
   },
-  "updated_at": 1784713397.3785124
+  "updated_at": 1784715248.5261662
 }

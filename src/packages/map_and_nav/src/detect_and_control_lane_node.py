@@ -279,8 +279,8 @@ class DuckAvoidanceNode:
                 self._publish_compressed(self.pub_debug_lane, self.display_image)
 
                 # Standalone Debug-Fenster anzeigen
-                cv2.imshow("Lane Control Debug", debug_frame)
-                cv2.waitKey(1)
+                #cv2.imshow("Lane Control Debug", debug_frame)
+                #cv2.waitKey(1)
 
 
             # --- KONTROLLE AUSSETZEN, WENN DURCH SWITCH PAUSIERT ---
