@@ -64,7 +64,7 @@ class DuckAvoidanceNode:
         self.zones_status = [{"white": False, "yellow": False, "duck": False} for _ in range(3)] # Status für Zone 1, 2, 3
         self.duck_bboxes = [] # Eingehende Enten [(x1,y1,x2,y2), ...]
         self.display_image = None
-        self.buffer_size = 3 #17
+        self.buffer_size = 6 #17
         # Puffer exklusiv für Zone 2
         self.z2_yellow_history = deque(maxlen=self.buffer_size)
         self.wiggle_direction = -1.0
@@ -211,14 +211,34 @@ class DuckAvoidanceNode:
         self.theta += dth
 
     def cb_ducks(self, msg):
-        # Extrahiere Boxen aus dem Polygon-Array (erwartet x1,y1,x2,y2 pro Ente)
-        self.duck_bboxes = []
+        now = time.monotonic()
+        incoming_boxes = []
         if len(msg.points) >= 4:
             for i in range(0, len(msg.points), 4):
-                # Min/Max bestimmen für sauberes Rect
                 xs = [msg.points[i+j].x for j in range(4)]
                 ys = [msg.points[i+j].y for j in range(4)]
-                self.duck_bboxes.append((int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))))
+                x1, y1, x2, y2 = int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))
+                incoming_boxes.append((x1, y1, x2, y2, now))
+                
+        # Merge eingehende Boxen mit bestehenden (verhindert Flackern einzelner Enten)
+        updated_boxes = list(incoming_boxes)
+        for old_box in self.duck_bboxes:
+            cx_old = (old_box[0] + old_box[2]) / 2.0
+            cy_old = (old_box[1] + old_box[3]) / 2.0
+            matched = False
+            for new_box in incoming_boxes:
+                cx_new = (new_box[0] + new_box[2]) / 2.0
+                cy_new = (new_box[1] + new_box[3]) / 2.0
+                dist = math.hypot(cx_old - cx_new, cy_old - cy_new)
+                if dist < 50: # Boxen sind nah genug, also ist es dieselbe Ente
+                    matched = True
+                    break
+            
+            # Wenn nicht gematcht, aber noch frisch (< 0.3s), weiter am Leben erhalten!
+            if not matched and (now - old_box[4] < 0.3):
+                updated_boxes.append(old_box)
+                
+        self.duck_bboxes = updated_boxes
 
     # ==========================================
     # 3. VISION & PERCEPTION LOOP
@@ -249,8 +269,12 @@ class DuckAvoidanceNode:
         mask_white = cv2.inRange(hsv, np.array(self.hsv_limits['white']['lower']), np.array(self.hsv_limits['white']['upper']))
         mask_yellow = cv2.inRange(hsv, np.array(self.hsv_limits['yellow']['lower']), np.array(self.hsv_limits['yellow']['upper']))
 
+        now = time.monotonic()
+        # Alte BBoxes aufräumen, falls sie länger als 0.3s nicht bestätigt wurden
+        self.duck_bboxes = [b for b in self.duck_bboxes if now - b[4] < 0.3]
+
         # 2. Enten aus der Gelb-Maske stanzen (manipulieren)
-        for (x1, y1, x2, y2) in self.duck_bboxes:
+        for (x1, y1, x2, y2, t) in self.duck_bboxes:
             cv2.rectangle(mask_yellow, (x1, y1), (x2, y2), 0, -1) # Setzt BBox-Bereich in Maske auf 0 (Schwarz)
             cv2.rectangle(undistorted, (x1, y1), (x2, y2), (0, 255, 0), 2) # Grün im Debug-Bild
 
@@ -259,7 +283,7 @@ class DuckAvoidanceNode:
         
         for i, (trap_pts, trap_poly) in enumerate(zip(self.trapezoids_2d, self.trapezoids_shapely)):
             # A) Enten-Kollision
-            for (x1, y1, x2, y2) in self.duck_bboxes:
+            for (x1, y1, x2, y2, t) in self.duck_bboxes:
                 if trap_poly.intersects(ShapelyBox(x1, y1, x2, y2)):
                     self.zones_status[i]["duck"] = True
                     break
@@ -391,7 +415,7 @@ class DuckAvoidanceNode:
                             self.escape_direction = -1.0
                             self.last_inversion_time = current_time
                         
-                        elif self.escape_direction == -1.0 and z1["white"]:
+                        elif self.escape_direction == -1.0 and z2["white"]:
                             rospy.logwarn("Rechtsdrehung wegen WEISS (z1) auf LINKS wechseln")
                             self.escape_direction = 1.0
                             self.last_inversion_time = current_time

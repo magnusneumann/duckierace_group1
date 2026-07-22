@@ -113,7 +113,11 @@ class DebugNavigationNode:
             if n_edges == 1:
                 curvatures = [0.0]
             elif n_edges == 2:
-                curvatures = [-0.25, 0.25]
+                # Kanten A1-B1 (Süd) und A4-B2 (Nord) visuell tauschen, damit es zur Realität passt
+                if pair == ("A", "B") or pair == ("B", "A"):
+                    curvatures = [0.25, -0.25]
+                else:
+                    curvatures = [-0.25, 0.25]
             elif n_edges == 3:
                 curvatures = [-0.35, 0.0, 0.35]
             else:

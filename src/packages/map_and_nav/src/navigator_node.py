@@ -4,7 +4,9 @@ import json
 import os
 
 import rospy
-from std_msgs.msg import Bool, String
+import time
+from std_msgs.msg import Bool, String, Int32
+from duckietown_msgs.msg import Twist2DStamped
 from std_srvs.srv import Trigger, TriggerResponse
 
 from topological_graph import (
@@ -101,6 +103,26 @@ class NavigatorNode:
         self.pub_turn = rospy.Publisher(
             f"/{self.vehicle}/intersection/turn_decision",
             String,
+            queue_size=1,
+            latch=True,
+        )
+
+        self.pub_lane_switch = rospy.Publisher(
+            f"/{self.vehicle}/switch/lane_control",
+            Int32,
+            queue_size=1,
+            latch=True,
+        )
+
+        self.pub_cmd = rospy.Publisher(
+            f"/{self.vehicle}/car_cmd_switch_node/cmd",
+            Twist2DStamped,
+            queue_size=1,
+        )
+
+        self.pub_standby = rospy.Publisher(
+            f"/{self.vehicle}/switch/standby",
+            Bool,
             queue_size=1,
             latch=True,
         )
@@ -214,6 +236,7 @@ class NavigatorNode:
                 rospy.loginfo("Starte Route automatisch...")
                 self.plan_route(gates)
                 self.active = True
+                self.pub_lane_switch.publish(Int32(1))
                 self.publish_next_turn()
 
         except FileNotFoundError:
@@ -267,6 +290,8 @@ class NavigatorNode:
 
             self.active = True
 
+            self.pub_lane_switch.publish(Int32(1))
+
             self.publish_next_turn()
 
         except Exception as e:
@@ -281,6 +306,9 @@ class NavigatorNode:
     # ==============================================================
 
     def plan_route(self, target_gates):
+
+        # Wenn wir eine neue Route planen, wecken wir alles aus dem Standby auf
+        self.pub_standby.publish(Bool(False))
 
         self.route_steps = []
         self.target_gates = target_gates
@@ -384,6 +412,8 @@ class NavigatorNode:
 
             self.active = False
             self.active_step = None
+
+            self.perform_duck_dance_and_standby()
 
             return
 
@@ -553,6 +583,51 @@ class NavigatorNode:
             "target_gates": self.target_gates,
         }
         self.pub_status.publish(String(data=json.dumps(status)))
+
+    # ==============================================================
+    # Ententanz & Standby
+    # ==============================================================
+
+    def perform_duck_dance_and_standby(self):
+        rospy.loginfo("Navigation beendet. Pausiere Lane Control und starte Ententanz!")
+        
+        # Lane Control pausieren, damit wir die Motoren übernehmen können
+        self.pub_lane_switch.publish(Int32(0))
+        
+        start_time = time.time()
+        last_wiggle = start_time
+        wiggle_dir = -1.0
+        
+        rate = rospy.Rate(10)
+        while time.time() - start_time < 3.0 and not rospy.is_shutdown():
+            current_time = time.time()
+            if current_time - last_wiggle > 0.2:
+                wiggle_dir *= -1.0
+                last_wiggle = current_time
+                
+            cmd = Twist2DStamped()
+            cmd.header.stamp = rospy.Time.now()
+            # 0.08 war die wiggle_power im duck_avoidance_node
+            cmd.v = 1.0 * 0.08 * wiggle_dir
+            cmd.omega = 2.0 * wiggle_dir
+            
+            self.pub_cmd.publish(cmd)
+            rate.sleep()
+            
+        rospy.loginfo("Ententanz beendet. Gehe in STANDBY-Modus.")
+        self.pub_standby.publish(Bool(True))
+        
+        # Standby: Alles auf 0 setzen
+        cmd = Twist2DStamped()
+        cmd.header.stamp = rospy.Time.now()
+        cmd.v = 0.0
+        cmd.omega = 0.0
+        
+        for _ in range(5):
+            if rospy.is_shutdown():
+                break
+            self.pub_cmd.publish(cmd)
+            rospy.sleep(0.1)
 
     # ==============================================================
     # Start

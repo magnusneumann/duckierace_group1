@@ -42,6 +42,13 @@ class SwitchControlNode:
         
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_decision", String, self.cbTurnDecision, queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_completed", String, self.cbTurnCompleted, queue_size=1)
+        
+        rospy.Subscriber(f"/{self._vehicle_name}/switch/standby", Bool, self.cbStandby, queue_size=1)
+
+    def cbStandby(self, msg):
+        if msg.data:
+            rospy.loginfo("Externes Standby-Kommando empfangen. Schalte in den STANDBY-Modus.")
+            self.state = State.STANDBY
 
     def cbTurnDecision(self, msg):
         # Wenn wir noch im Standby sind, wachen wir auf, da wir jetzt ein Ziel haben!
