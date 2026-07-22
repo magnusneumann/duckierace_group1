@@ -26,6 +26,13 @@ launchers/follow_lane.sh
 ## Bot auf Wendehammer mit Enten fahren lassen:
 launchers/avoid_ducks.sh
 
+## Navi zum Fahren nutzen:
+# in Terminal 1
+launchers/navigation.sh
+# in Terminal 2 Knoten beliebig viele
+rostopic pub /VEHIVLENAME/navigation/route std_msgs/String "data: '[7, 9, 8]'"
+
+
 ## Bot den Parkour mappen lassen und als Service auf Kanten gemappte Punkte abfahren:
 launchers/mapping.sh
 ### Mapping Starten: (löscht den aktuellen Graphen und fängt an aufzuzeichnen)

@@ -11,7 +11,7 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
-class DebugMappingNode:
+class DebugNavigationNode:
     def __init__(self, node_name):
         rospy.init_node(node_name)
         self._vehicle_name = os.environ.get("VEHICLE_NAME", "duckiebot")
@@ -19,14 +19,25 @@ class DebugMappingNode:
         # Load the graph
         self.package_root = os.path.dirname(os.path.dirname(__file__))
         config_path = os.path.join(self.package_root, "config", "graph.json")
+        mapping_path = os.path.join(self.package_root, "config", "challenge4_mapping.json")
+        
         with open(config_path, "r") as f:
             self.graph_input = json.load(f)
+            
+        self.edge_to_gates = defaultdict(list)
+        try:
+            with open(mapping_path, "r") as f:
+                mapping_data = json.load(f)
+                for edge, data in mapping_data.get("edges", {}).items():
+                    for gate in data.get("gates", []):
+                        self.edge_to_gates[edge].append(gate)
+        except Exception:
+            rospy.logwarn("Konnte Mapping-Daten nicht laden.")
             
         self.edges = {}
         for node, ports in self.graph_input["graph"].items():
             for port, target in ports.items():
                 node_b, port_b = target
-                # canonical key
                 left = (str(node), int(port))
                 right = (str(node_b), int(port_b))
                 if right < left:
@@ -38,18 +49,19 @@ class DebugMappingNode:
                 }
                 
         self.pos = {
-            "B": (0, 0),
-            "A": (4, 0),
-            "C": (4, 4),
+            "B": (-4, 0),
+            "A": (0, 0),
+            "C": (0, 4),
         }
         
         self.current_node = None
         self.current_edge = None
         self.edge_drive_started = False
-        self.visited_edges = []
-        self.edge_to_gates = defaultdict(list)
+        self.route_steps = []
+        self.active_step = None
+        self.target_gates = []
         
-        rospy.Subscriber(f"/{self._vehicle_name}/mapping/status", String, self.cb_status, queue_size=1)
+        rospy.Subscriber(f"/{self._vehicle_name}/navigation/status", String, self.cb_status, queue_size=1)
         
         self.fig = plt.figure(figsize=(10, 8))
         
@@ -59,12 +71,9 @@ class DebugMappingNode:
             self.current_node = status.get("current_node")
             self.current_edge = status.get("current_edge")
             self.edge_drive_started = status.get("edge_drive_started", False)
-            self.visited_edges = status.get("visited_edges", [])
-            
-            mapped = status.get("mapped_edges", {})
-            self.edge_to_gates.clear()
-            for gate, edge in mapped.items():
-                self.edge_to_gates[edge].append(gate)
+            self.route_steps = status.get("route_steps", [])
+            self.active_step = status.get("active_step")
+            self.target_gates = status.get("target_gates", [])
         except Exception as e:
             pass
 
@@ -110,12 +119,21 @@ class DebugMappingNode:
                 curvatures = [(i - center) * 0.15 for i in range(n_edges)]
                 
             for (edge_key, edge), curvature in zip(grouped_edges, curvatures):
-                visited = edge_key in self.visited_edges
-                is_active = (edge_key == self.current_edge and self.edge_drive_started)
+                is_active = (edge_key == self.current_edge and self.edge_drive_started) or (edge_key == self.active_step and not self.edge_drive_started)
+                is_planned = edge_key in self.route_steps
                 
-                width = 3.0 if is_active else (2.0 if visited else 1.0)
-                style = "solid" if visited else "dashed"
-                color = "red" if is_active else ("green" if visited else "black")
+                if is_active:
+                    width = 3.0
+                    style = "solid"
+                    color = "red"
+                elif is_planned:
+                    width = 2.5
+                    style = "solid"
+                    color = "blue"
+                else:
+                    width = 1.0
+                    style = "dashed"
+                    color = "black"
                 
                 nx.draw_networkx_edges(
                     graph_vis, self.pos,
@@ -149,30 +167,31 @@ class DebugMappingNode:
                 gate_str = ", ".join(str(g) for g in sorted(gates))
                 if is_active:
                     label = f"{edge_key}\nACTIVE"
-                elif visited:
-                    label = f"{edge_key}\nGate: {gate_str}" if gate_str else f"{edge_key}"
+                elif is_planned:
+                    label = f"{edge_key}\nPLANNED"
                 else:
-                    label = f"{edge_key}\nunbekannt"
+                    label = f"{edge_key}"
+                    
+                if gate_str:
+                    label += f"\nGate: {gate_str}"
                     
                 ax.text(label_x, label_y, label, horizontalalignment="center", verticalalignment="center", 
                         bbox=dict(facecolor="white", alpha=0.9, edgecolor="gray"), fontsize=10)
 
+        if self.target_gates:
+            ax.set_title(f"Target Route: {self.target_gates}", fontsize=16, fontweight="bold")
+        else:
+            ax.set_title("Navigation Standby", fontsize=16, fontweight="bold")
+
         ax.axis("off")
         self.fig.tight_layout()
         
-        # Save the current graph state as PNG to the config folder
-        save_path = os.path.join(self.package_root, "config", "challenge4_mapping_graph.png")
-        try:
-            self.fig.savefig(save_path, dpi=100, bbox_inches='tight')
-        except Exception as e:
-            rospy.logwarn_throttle(2.0, f"Konnte Graphen nicht speichern: {e}")
-            
         self.fig.canvas.draw()
         img = np.frombuffer(self.fig.canvas.tostring_rgb(), dtype=np.uint8)
         img = img.reshape(self.fig.canvas.get_width_height()[::-1] + (3,))
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         
-        cv2.imshow("Mapping Graph", img)
+        cv2.imshow("Navigation Graph", img)
         cv2.waitKey(50)
 
     def run(self):
@@ -180,7 +199,7 @@ class DebugMappingNode:
         while not rospy.is_shutdown():
             self.render()
             rate.sleep()
-
+            
 if __name__ == "__main__":
-    node = DebugMappingNode("debug_mapping_node")
+    node = DebugNavigationNode("debug_navigation_node")
     node.run()

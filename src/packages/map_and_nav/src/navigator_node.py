@@ -96,7 +96,17 @@ class NavigatorNode:
             f"/{self.vehicle}/intersection/turn_decision",
             String,
             queue_size=1,
+            latch=True,
         )
+
+        self.pub_status = rospy.Publisher(
+            f"/{self.vehicle}/navigation/status",
+            String,
+            queue_size=1,
+            latch=True,
+        )
+        
+        self.target_gates = []
 
         rospy.Subscriber(
             f"/{self.vehicle}/intersection/turn_completed",
@@ -219,9 +229,14 @@ class NavigatorNode:
     def plan_route(self, target_gates):
 
         self.route_steps = []
+        self.target_gates = target_gates
 
         planning_node = (
             self.current_node
+        )
+        
+        planning_incoming_port = (
+            self.incoming_port
         )
 
         total_cost = 0.0
@@ -243,6 +258,7 @@ class NavigatorNode:
                 self.graph.route_to_gate(
                     planning_node,
                     gate_id,
+                    planning_incoming_port,
                 )
             )
 
@@ -257,6 +273,12 @@ class NavigatorNode:
                 planning_node = (
                     steps[-1]["to"]
                 )
+                
+                last_edge = self.graph.edges[steps[-1]["edge_key"]]
+                if planning_node == last_edge["node_a"]:
+                    planning_incoming_port = int(last_edge["port_a"])
+                else:
+                    planning_incoming_port = int(last_edge["port_b"])
 
         rospy.loginfo(
             "================================"
@@ -288,6 +310,8 @@ class NavigatorNode:
         rospy.loginfo(
             "================================"
         )
+        
+        self.publish_status()
 
     # ==============================================================
     # Nächste Kreuzung
@@ -353,6 +377,7 @@ class NavigatorNode:
                 data=turn
             )
         )
+        self.publish_status()
 
     # ==============================================================
     # Kreuzung fertig
@@ -372,6 +397,8 @@ class NavigatorNode:
             f"Fahre jetzt auf "
             f"{self.active_step['edge_key']}"
         )
+        
+        self.publish_status()
 
     # ==============================================================
     # Nächste Stopplinie
@@ -449,11 +476,28 @@ class NavigatorNode:
         self.active_step = None
 
         self.edge_started = False
+        
+        self.publish_status()
 
         return TriggerResponse(
             True,
             "Navigation gestoppt",
         )
+
+    # ==============================================================
+    # Status
+    # ==============================================================
+    
+    def publish_status(self):
+        status = {
+            "current_node": self.current_node,
+            "current_edge": self.active_step["edge_key"] if (self.active_step and self.edge_started) else None,
+            "edge_drive_started": self.edge_started,
+            "route_steps": [step["edge_key"] for step in self.route_steps],
+            "active_step": self.active_step["edge_key"] if self.active_step else None,
+            "target_gates": self.target_gates,
+        }
+        self.pub_status.publish(String(data=json.dumps(status)))
 
     # ==============================================================
     # Start

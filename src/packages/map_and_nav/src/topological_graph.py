@@ -122,46 +122,80 @@ class TopologicalGraph:
                 result[int(gate_id)] = key
         return result
 
-    def dijkstra(self, start_node):
+    def dijkstra(self, start_node, start_incoming_port=None):
         start_node = str(start_node)
-        dist = {start_node: 0.0}
+        if start_incoming_port is not None:
+            start_incoming_port = int(start_incoming_port)
+        start_state = (start_node, start_incoming_port)
+        
+        dist = {start_state: 0.0}
         previous = {}
-        queue = [(0.0, start_node)]
+        queue = [(0.0, start_state)]
+        
         while queue:
-            cost, node = heapq.heappop(queue)
-            if cost != dist[node]:
+            cost, state = heapq.heappop(queue)
+            node, inc_port = state
+            
+            if cost != dist[state]:
                 continue
+                
             for exit_port, data in self.adjacency.get(node, {}).items():
+                exit_port = int(exit_port)
+                # U-Turn verbieten
+                if inc_port is not None and exit_port == inc_port:
+                    continue
+                    
                 edge_key = data["edge_key"]
                 next_node = data["to_node"]
+                next_inc_port = int(data["to_port"])
+                
                 next_cost = cost + self.weight(edge_key)
-                if next_cost < dist.get(next_node, float("inf")):
-                    dist[next_node] = next_cost
-                    previous[next_node] = (node, exit_port, edge_key)
-                    heapq.heappush(queue, (next_cost, next_node))
+                next_state = (next_node, next_inc_port)
+                
+                if next_cost < dist.get(next_state, float("inf")):
+                    dist[next_state] = next_cost
+                    previous[next_state] = (state, exit_port, edge_key)
+                    heapq.heappush(queue, (next_cost, next_state))
+                    
         return dist, previous
 
-    def path_to_node(self, start_node, goal_node):
+    def path_to_node(self, start_node, goal_node, start_incoming_port=None):
         start_node = str(start_node)
         goal_node = str(goal_node)
-        dist, previous = self.dijkstra(start_node)
-        if goal_node not in dist:
+        
+        if start_incoming_port is not None:
+            start_incoming_port = int(start_incoming_port)
+        start_state = (start_node, start_incoming_port)
+        
+        dist, previous = self.dijkstra(start_node, start_incoming_port)
+        
+        # Finde den besten Zielzustand (beliebiger incoming_port)
+        best_goal_state = None
+        best_cost = float("inf")
+        for state, cost in dist.items():
+            if state[0] == goal_node and cost < best_cost:
+                best_cost = cost
+                best_goal_state = state
+                
+        if best_goal_state is None:
             return None
+            
         steps = []
-        node = goal_node
-        while node != start_node:
-            prev_node, exit_port, edge_key = previous[node]
+        state = best_goal_state
+        while state != start_state:
+            prev_state, exit_port, edge_key = previous[state]
             steps.append({
-                "from": prev_node,
-                "to": node,
+                "from": prev_state[0],
+                "to": state[0],
                 "exit_port": exit_port,
                 "edge_key": edge_key,
             })
-            node = prev_node
+            state = prev_state
+            
         steps.reverse()
-        return dist[goal_node], steps
+        return best_cost, steps
 
-    def route_to_gate(self, start_node, gate_id):
+    def route_to_gate(self, start_node, gate_id, start_incoming_port=None):
         gate_edge = self.gates_to_edges().get(int(gate_id))
         if gate_edge is None:
             raise ValueError(f"Gate {gate_id} is not mapped to any edge")
@@ -174,7 +208,7 @@ class TopologicalGraph:
             (edge["node_a"], edge["port_a"], edge["node_b"]),
             (edge["node_b"], edge["port_b"], edge["node_a"]),
         ):
-            node_path = self.path_to_node(start_node, approach_node)
+            node_path = self.path_to_node(start_node, approach_node, start_incoming_port)
             if node_path is None:
                 continue
             cost, steps = node_path

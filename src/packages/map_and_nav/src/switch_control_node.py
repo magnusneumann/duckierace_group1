@@ -6,17 +6,27 @@ from duckietown_msgs.msg import Twist2DStamped
 from enum import Enum
 
 class State(Enum):
+    STANDBY = 0
     LANE_FOLLOWING = 1
     STOPPED_AT_LINE = 2
     CROSSING_INTERSECTION = 3
-    #AVOID_COLLISION = 4
 
 class SwitchControlNode:
     def __init__(self, node_name):
         rospy.init_node(node_name)
         self._vehicle_name = os.environ['VEHICLE_NAME']
         
-        self.state = State.LANE_FOLLOWING
+        # ROS-Parameter einlesen (Standard: False -> fängt sofort an zu fahren)
+        # Dadurch werden andere Launcher nicht kaputt gemacht!
+        start_in_standby = rospy.get_param("~start_in_standby", False)
+        
+        if start_in_standby:
+            self.state = State.STANDBY
+            rospy.loginfo("Switch Control (FSM) gestartet. Befindet sich im STANDBY.")
+        else:
+            self.state = State.LANE_FOLLOWING
+            rospy.loginfo("Switch Control (FSM) gestartet. Bereit für alle Manöver (LANE_FOLLOWING).")
+            
         self.turn_decision = None # Standard: Wir wissen noch nicht, wohin.
         
         # Timer: Bis wann ignorieren wir rote Linien? (Gegen das sofortige Halten nach der Kurve)
@@ -24,23 +34,21 @@ class SwitchControlNode:
 
         # --- Publisher ---
         self.pub_lane_control = rospy.Publisher(f"/{self._vehicle_name}/switch/lane_control", Int32, queue_size=1)
-        #self.pub_duck_control = rospy.Publisher(f"/{self._vehicle_name}/switch/duck_control", Int32, queue_size=1)
         self.pub_execute_turn = rospy.Publisher(f"/{self._vehicle_name}/intersection/execute_turn", String, queue_size=1)
         self.pub_cmd_vel = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=1)
 
         # --- Subscriber ---
-        # FEHLER BEHOBEN: Topic von 'stopline' auf 'stop_line' geändert und Datentyp von String auf Bool geändert!
         rospy.Subscriber(f"/{self._vehicle_name}/detect/stop_line", Bool, self.cbStopline, queue_size=1)
         
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_decision", String, self.cbTurnDecision, queue_size=1)
         rospy.Subscriber(f"/{self._vehicle_name}/intersection/turn_completed", String, self.cbTurnCompleted, queue_size=1)
-        
-        # Zukünftiger YOLO-Input (True = Ente gesehen, False = Weg frei)
-        #rospy.Subscriber(f"/{self._vehicle_name}/detect/duck", Bool, self.cbDuckDetected, queue_size=1)
-
-        rospy.loginfo("Switch Control (FSM) gestartet. Bereit für alle Manöver.")
 
     def cbTurnDecision(self, msg):
+        # Wenn wir noch im Standby sind, wachen wir auf, da wir jetzt ein Ziel haben!
+        if self.state == State.STANDBY:
+            rospy.loginfo("Routen-Befehl empfangen! Wecke Roboter aus dem Standby auf.")
+            self.state = State.LANE_FOLLOWING
+            
         # Wir updaten die Entscheidung asynchron. 
         # (Wird ignoriert, falls wir gerade schon auf der Kreuzung sind)
         if self.state != State.CROSSING_INTERSECTION:
@@ -89,7 +97,7 @@ class SwitchControlNode:
             # Der Boss verteilt hier die Arbeitserlaubnis (Enable-Signale) stetig an die Arbeiter
             if self.state == State.LANE_FOLLOWING:
                 self.pub_lane_control.publish(Int32(1))
-            elif self.state == State.STOPPED_AT_LINE:
+            elif self.state == State.STOPPED_AT_LINE or self.state == State.STANDBY:
                 self.pub_lane_control.publish(Int32(0))
                 # Haltekommando kontinuierlich senden, damit er wirklich steht
                 self.pub_cmd_vel.publish(Twist2DStamped(v=0.0, omega=0.0))
