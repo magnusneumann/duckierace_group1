@@ -5,6 +5,10 @@
 Erweiterung dev Containers installieren, STRG SHIFT P um reopen in container auszuführen,
 das dockerfile wurde erweitert, alle Pakete müssten automatisch installiert werden. 
 
+in globalem terminal im projekthauptverzeichnis chmod +x -R .(um alle .py Dateien ausführbar zu machen)
+
+in vsc terminal catkin_make
+
 zuvor musst nachträglich installiert werden:
 apt-get update && apt-get install -y tmux python3-pip && python3 -m pip install --upgrade pip && python3 -m pip install --upgrade numpy ultralytics shapely pupil-apriltags && python3 -m pip install onnx onnxruntime
 
