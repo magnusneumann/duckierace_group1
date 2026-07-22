@@ -34,16 +34,17 @@ class TopologicalMappingNode:
             "~incoming_port",
             self.config.get("start", {}).get("incoming_port", 3),
         ))
-        self.auto_export_mapping = rospy.get_param("~auto_export_mapping", False)
+        self.auto_export_mapping = rospy.get_param("~auto_export_mapping", True)
         self.auto_start_navigation = rospy.get_param("~auto_start_navigation", False)
         self.navigation_start_delay = float(rospy.get_param("~navigation_start_delay", 0.0))
         self.current_edge = None
         self.expected_next_node = None
         self.edge_started_at = None
         self.edge_drive_started = False
-        self.active = False
+        self.active = True
         self.visited_edges = set()
         self.pending_exit_ports = []
+        self.best_gate_candidate = {"id": None, "area": 0}
         self.mapping_exported = False
 
         self.pub_turn = rospy.Publisher(
@@ -72,7 +73,8 @@ class TopologicalMappingNode:
         rospy.Service(f"/{self._vehicle_name}/mapping4/export", Trigger, self.srv_export)
         rospy.Service(f"/{self._vehicle_name}/mapping4/stop", Trigger, self.srv_stop)
 
-        rospy.loginfo("Challenge-4 Topological Mapping bereit.")
+        rospy.loginfo("Challenge-4 Topological Mapping bereit. Starte automatisches Mapping!")
+        self.choose_next_edge()
 
     def srv_start(self, req):
         self.active = True
@@ -127,18 +129,22 @@ class TopologicalMappingNode:
                 rospy.logerr(f"Automatischer Mapping-Export fehlgeschlagen: {e}")
 
     def cb_tag(self, msg):
-        if not self.active or not is_gate_tag(msg.data) or self.current_edge is None:
+        if not self.active or self.current_edge is None:
             return
-        gate_id = int(msg.data)
-        self.graph.set_gate(self.current_edge, gate_id)
-        rospy.loginfo(f"Tor erkannt: Kante {self.current_edge}, Gate-Tag {gate_id} gespeichert.")
-        self.publish_status({
-            "mapped_gate": gate_id,
-            "edge": self.current_edge,
-            "mapped_tag": gate_id,
-            "mapped_edges": self._mapped_edges_dict(),
-            "status": "edge_tag_stored",
-        })
+        try:
+            data = json.loads(msg.data)
+            gate_id = data.get("id")
+            area = data.get("area", 0)
+        except:
+            return
+            
+        if not is_gate_tag(gate_id):
+            return
+            
+        gate_id = int(gate_id)
+        if area > self.best_gate_candidate["area"]:
+            self.best_gate_candidate = {"id": gate_id, "area": area}
+            rospy.loginfo(f"Neuer bester Tor-Kandidat auf Kante {self.current_edge}: Gate {gate_id} (Area: {area})")
 
     def _mapped_edges_dict(self):
         return {str(gate): edge for gate, edge in self.graph.gates_to_edges().items()}
@@ -155,10 +161,17 @@ class TopologicalMappingNode:
         if not self.active or self.current_edge is None or not self.edge_drive_started:
             return
 
+        if self.best_gate_candidate["id"] is not None:
+            gate_id = self.best_gate_candidate["id"]
+            self.graph.set_gate(self.current_edge, gate_id)
+            rospy.loginfo(f"Kante {self.current_edge} beendet. Speichere bestes Gate-Tag: {gate_id}")
+            self.best_gate_candidate = {"id": None, "area": 0}
+
         elapsed = (rospy.Time.now() - self.edge_started_at).to_sec() if self.edge_started_at else None
         if elapsed and elapsed > 0.1:
             self.graph.set_travel_time(self.current_edge, elapsed)
         self.visited_edges.add(self.current_edge)
+        self.publish_status({"status": "stopline_reached"})
 
         edge = self.graph.edges[self.current_edge]
         self.current_node = self.expected_next_node
@@ -187,10 +200,19 @@ class TopologicalMappingNode:
             self.publish_status({
                 "done": True,
                 "reason": "all graph edges visited",
-                "visited_edges": len(self.visited_edges),
                 "total_edges": len(self.graph.edges),
             })
             self.finish_mapping()
+            
+            rospy.loginfo("Mapping ist abgeschlossen! Beende alle ROS Nodes...")
+            # Stoppe den Roboter via cmd_vel kurz vor dem Beenden
+            from duckietown_msgs.msg import Twist2DStamped
+            pub_stop = rospy.Publisher(f"/{self._vehicle_name}/car_cmd_switch_node/cmd", Twist2DStamped, queue_size=10)
+            pub_stop.publish(Twist2DStamped(v=0.0, omega=0.0))
+            rospy.sleep(1.0)
+            
+            # Kill launcher
+            os.system("rosnode kill -a")
             return
 
         next_node, next_incoming_port, edge_key = self.graph.neighbor(self.current_node, exit_port)
@@ -211,7 +233,6 @@ class TopologicalMappingNode:
             "current_edge": self.current_edge,
             "expected_next_node": self.expected_next_node,
             "expected_next_incoming_port": next_incoming_port,
-            "visited_edges": len(self.visited_edges),
             "total_edges": len(self.graph.edges),
         })
 
@@ -220,6 +241,8 @@ class TopologicalMappingNode:
             return self.pending_exit_ports.pop(0)
 
         for port in self.graph.ports(self.current_node):
+            if port == self.incoming_port:
+                continue # FORBID U-TURN
             candidate = self.graph.edge_from_port(self.current_node, port)
             if candidate not in self.visited_edges:
                 return port
@@ -258,7 +281,17 @@ class TopologicalMappingNode:
         }
 
     def publish_status(self, value):
-        self.pub_status.publish(String(data=json.dumps(value, sort_keys=True)))
+        full_status = {
+            "current_node": self.current_node,
+            "current_edge": self.current_edge,
+            "expected_next_node": self.expected_next_node,
+            "edge_drive_started": self.edge_drive_started,
+            "visited_edges": list(self.visited_edges),
+            "total_edges": len(self.graph.edges),
+            "mapped_edges": self._mapped_edges_dict()
+        }
+        full_status.update(value)
+        self.pub_status.publish(String(data=json.dumps(full_status, sort_keys=True)))
 
     def run(self):
         rospy.spin()

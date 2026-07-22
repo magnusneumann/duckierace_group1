@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import random
+import json
 import cv2
 import numpy as np
 import rospy
@@ -27,7 +28,7 @@ class DetectTagsNode:
         
         self.current_decision = "straight"
         self.current_tag_id = "None"
-        self.publish_intersection_decisions = rospy.get_param("~publish_intersection_decisions", True)
+        self.publish_intersection_decisions = rospy.get_param("~publish_intersection_decisions", False)
         self.min_tag_area = 600  
         self.frame_counter = 0
         
@@ -107,8 +108,9 @@ class DetectTagsNode:
         if best_tag:
             self.current_tag_id = str(best_tag.tag_id)
             
-            # 1. IMMER die Tag-ID an den Mapping-Node senden (Für Kanten oder Knoten)
-            self.pub_tag_id.publish(String(data=self.current_tag_id))
+            # 1. IMMER die Tag-ID und Area an den Mapping-Node senden
+            payload = json.dumps({"id": self.current_tag_id, "area": float(max_area)})
+            self.pub_tag_id.publish(String(data=payload))
 
             # 2. NUR bei Kreuzungs-Tags eine Lenk-Entscheidung publishen
             if best_tag.tag_id in self.tag_rules:
@@ -137,6 +139,9 @@ class DetectTagsNode:
 
         self.display_image = img
         self._publish_tags_debug_image(img)
+        
+        cv2.imshow("Detect Tags Node Debug", img)
+        cv2.waitKey(1)
 
     def run(self):
         rospy.spin()
