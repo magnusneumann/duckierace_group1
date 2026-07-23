@@ -38,9 +38,15 @@ class DebugMappingNode:
                 }
                 
         self.pos = {
-            "B": (0, 0),
-            "A": (4, 0),
-            "C": (4, 4),
+            "C": (0, 0),
+            "A": (-4, -4),    # vorher (4, -4)
+            "B": (-8, -2),    # vorher (8, -2)
+            "D": (-4, 0),     # vorher (4, 0)
+            "E": (0, 8),
+            "F": (-4, 8),     # vorher (4, 8)
+            "G": (-8, 8),     # vorher (8, 8)
+            "H": (0, 12),
+            "I": (-4, 12)     # vorher (4, 12)
         }
         
         self.current_node = None

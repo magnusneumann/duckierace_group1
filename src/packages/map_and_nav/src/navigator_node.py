@@ -341,6 +341,7 @@ class NavigatorNode:
                     planning_node,
                     gate_id,
                     planning_incoming_port,
+                    allowed_gates=[gate_id]
                 )
             )
 

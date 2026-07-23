@@ -8,7 +8,7 @@
       "port_a": 2,
       "port_b": 2,
       "samples": 1,
-      "travel_time": 44.343173504
+      "travel_time": 39.124205112
     },
     "A.3--D.1": {
       "gates": [],
@@ -16,8 +16,8 @@
       "node_b": "D",
       "port_a": 3,
       "port_b": 1,
-      "samples": 1,
-      "travel_time": 7.144557476
+      "samples": 2,
+      "travel_time": 25.3213366275
     },
     "A.4--B.2": {
       "gates": [
@@ -27,8 +27,8 @@
       "node_b": "B",
       "port_a": 4,
       "port_b": 2,
-      "samples": 2,
-      "travel_time": 13.013418317
+      "samples": 1,
+      "travel_time": 11.546623707
     },
     "B.3--D.4": {
       "gates": [],
@@ -36,8 +36,8 @@
       "node_b": "D",
       "port_a": 3,
       "port_b": 4,
-      "samples": 2,
-      "travel_time": 10.4882493025
+      "samples": 0,
+      "travel_time": null
     },
     "B.4--G.1": {
       "gates": [],
@@ -45,8 +45,8 @@
       "node_b": "G",
       "port_a": 4,
       "port_b": 1,
-      "samples": 1,
-      "travel_time": 13.236469746
+      "samples": 0,
+      "travel_time": null
     },
     "C.3--E.1": {
       "gates": [
@@ -56,17 +56,19 @@
       "node_b": "E",
       "port_a": 3,
       "port_b": 1,
-      "samples": 2,
-      "travel_time": 3.4982628819999997
+      "samples": 1,
+      "travel_time": 4.144710063
     },
     "C.4--D.2": {
-      "gates": [],
+      "gates": [
+        7
+      ],
       "node_a": "C",
       "node_b": "D",
       "port_a": 4,
       "port_b": 2,
-      "samples": 1,
-      "travel_time": 4.491685867
+      "samples": 2,
+      "travel_time": 6.0349411965
     },
     "D.3--F.1": {
       "gates": [],
@@ -74,8 +76,8 @@
       "node_b": "F",
       "port_a": 3,
       "port_b": 1,
-      "samples": 2,
-      "travel_time": 3.4167163375
+      "samples": 1,
+      "travel_time": 4.341989994
     },
     "E.2--H.2": {
       "gates": [],
@@ -84,7 +86,7 @@
       "port_a": 2,
       "port_b": 2,
       "samples": 1,
-      "travel_time": 17.144310236
+      "travel_time": 25.139552594
     },
     "E.3--H.1": {
       "gates": [],
@@ -92,8 +94,8 @@
       "node_b": "H",
       "port_a": 3,
       "port_b": 1,
-      "samples": 2,
-      "travel_time": 3.663181186
+      "samples": 1,
+      "travel_time": 4.175556421
     },
     "E.4--F.2": {
       "gates": [],
@@ -101,8 +103,8 @@
       "node_b": "F",
       "port_a": 4,
       "port_b": 2,
-      "samples": 3,
-      "travel_time": 3.4679080646666662
+      "samples": 1,
+      "travel_time": 3.849843502
     },
     "F.3--I.1": {
       "gates": [],
@@ -110,41 +112,35 @@
       "node_b": "I",
       "port_a": 3,
       "port_b": 1,
-      "samples": 2,
-      "travel_time": 4.028596997
+      "samples": 0,
+      "travel_time": null
     },
     "F.4--G.2": {
-      "gates": [
-        9
-      ],
+      "gates": [],
       "node_a": "F",
       "node_b": "G",
       "port_a": 4,
       "port_b": 2,
-      "samples": 1,
-      "travel_time": 12.166662932
+      "samples": 0,
+      "travel_time": null
     },
     "G.3--I.4": {
-      "gates": [
-        10
-      ],
+      "gates": [],
       "node_a": "G",
       "node_b": "I",
       "port_a": 3,
       "port_b": 4,
-      "samples": 1,
-      "travel_time": 17.172339916
+      "samples": 0,
+      "travel_time": null
     },
     "H.4--I.2": {
-      "gates": [
-        6
-      ],
+      "gates": [],
       "node_a": "H",
       "node_b": "I",
       "port_a": 4,
       "port_b": 2,
-      "samples": 1,
-      "travel_time": 3.562375545
+      "samples": 0,
+      "travel_time": null
     }
   },
   "graph": {
@@ -318,10 +314,10 @@
     }
   },
   "state": {
-    "current_edge": null,
-    "current_node": "I",
-    "expected_next_node": null,
-    "incoming_port": 1
+    "current_edge": "B.3--D.4",
+    "current_node": "D",
+    "expected_next_node": "B",
+    "incoming_port": 2
   },
-  "updated_at": 1784789195.5755343
+  "updated_at": 1784786680.8060477
 }

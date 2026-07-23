@@ -43,7 +43,6 @@ class TopologicalMappingNode:
         self.edge_drive_started = False
         self.active = True
         self.visited_edges = set()
-        self.visit_counts = {}
         self.pending_exit_ports = []
         self.best_gate_candidate = {"id": None, "area": 0}
         self.mapping_exported = False
@@ -174,7 +173,6 @@ class TopologicalMappingNode:
         if elapsed and elapsed > 0.1:
             self.graph.set_travel_time(self.current_edge, elapsed)
         self.visited_edges.add(self.current_edge)
-        self.visit_counts[self.current_edge] = self.visit_counts.get(self.current_edge, 0) + 1
         self.publish_status({"status": "stopline_reached"})
 
         edge = self.graph.edges[self.current_edge]
@@ -240,13 +238,6 @@ class TopologicalMappingNode:
             "total_edges": len(self.graph.edges),
         })
 
-    def _needs_visit(self, edge_key):
-        if edge_key not in self.visited_edges:
-            return True
-        # Wenn kein Gate gefunden wurde, bis zu 3x versuchen
-        if edge_key not in self._mapped_edges_dict().values() and self.visit_counts.get(edge_key, 0) < 3:
-            return True
-        return False
 
     def next_exit_port(self):
         if self.pending_exit_ports:
@@ -256,7 +247,7 @@ class TopologicalMappingNode:
             if port == self.incoming_port:
                 continue # FORBID U-TURN
             candidate = self.graph.edge_from_port(self.current_node, port)
-            if self._needs_visit(candidate):
+            if candidate not in self.visited_edges:
                 return port
 
         # Sind lokal alle Kanten "fertig", fuehrt der kuerzeste bekannte Weg zum
@@ -265,12 +256,13 @@ class TopologicalMappingNode:
         best_cost = None
         for node in self.graph.adjacency.keys():
             has_unvisited = any(
-                self._needs_visit(self.graph.edge_from_port(node, port))
+                self.graph.edge_from_port(node, port) not in self.visited_edges
                 for port in self.graph.ports(node)
             )
             if not has_unvisited or node == self.current_node:
                 continue
-            node_path = self.graph.path_to_node(self.current_node, node)
+            # U-TURN FIX APPLIED HERE:
+            node_path = self.graph.path_to_node(self.current_node, node, self.incoming_port)
             if node_path is None:
                 continue
             cost, steps = node_path

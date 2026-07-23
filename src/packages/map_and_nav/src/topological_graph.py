@@ -122,7 +122,7 @@ class TopologicalGraph:
                 result[int(gate_id)] = key
         return result
 
-    def dijkstra(self, start_node, start_incoming_port=None):
+    def dijkstra(self, start_node, start_incoming_port=None, allowed_gates=None):
         start_node = str(start_node)
         if start_incoming_port is not None:
             start_incoming_port = int(start_incoming_port)
@@ -146,6 +146,13 @@ class TopologicalGraph:
                     continue
                     
                 edge_key = data["edge_key"]
+                
+                if allowed_gates is not None:
+                    gates_on_edge = self.edges[edge_key].get("gates", [])
+                    # If edge has gates, all of them must be in allowed_gates
+                    if gates_on_edge and any(int(g) not in allowed_gates for g in gates_on_edge):
+                        continue
+                        
                 next_node = data["to_node"]
                 next_inc_port = int(data["to_port"])
                 
@@ -159,7 +166,7 @@ class TopologicalGraph:
                     
         return dist, previous
 
-    def path_to_node(self, start_node, goal_node, start_incoming_port=None):
+    def path_to_node(self, start_node, goal_node, start_incoming_port=None, allowed_gates=None):
         start_node = str(start_node)
         goal_node = str(goal_node)
         
@@ -167,7 +174,7 @@ class TopologicalGraph:
             start_incoming_port = int(start_incoming_port)
         start_state = (start_node, start_incoming_port)
         
-        dist, previous = self.dijkstra(start_node, start_incoming_port)
+        dist, previous = self.dijkstra(start_node, start_incoming_port, allowed_gates)
         
         # Finde den besten Zielzustand (beliebiger incoming_port)
         best_goal_state = None
@@ -195,7 +202,7 @@ class TopologicalGraph:
         steps.reverse()
         return best_cost, steps
 
-    def route_to_gate(self, start_node, gate_id, start_incoming_port=None):
+    def route_to_gate(self, start_node, gate_id, start_incoming_port=None, allowed_gates=None):
         gate_edge = self.gates_to_edges().get(int(gate_id))
         if gate_edge is None:
             raise ValueError(f"Gate {gate_id} is not mapped to any edge")
@@ -208,7 +215,7 @@ class TopologicalGraph:
             (edge["node_a"], edge["port_a"], edge["node_b"]),
             (edge["node_b"], edge["port_b"], edge["node_a"]),
         ):
-            node_path = self.path_to_node(start_node, approach_node, start_incoming_port)
+            node_path = self.path_to_node(start_node, approach_node, start_incoming_port, allowed_gates)
             if node_path is None:
                 continue
             cost, steps = node_path
