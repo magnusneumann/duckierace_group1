@@ -73,7 +73,7 @@ class SwitchControlNode:
             self.pub_cmd_vel.publish(Twist2DStamped(v=0.0, omega=0.0)) # Vollbremsung
             
             # Wartepflicht von 2 Sekunden absitzen
-            rospy.Timer(rospy.Duration(2.0), self.trigger_intersection_crossing, oneshot=True)
+            rospy.Timer(rospy.Duration(1.0), self.trigger_intersection_crossing, oneshot=True)
 
     def trigger_intersection_crossing(self, event):
         # Nur losfahren, wenn nicht in der Zwischenzeit eine Ente aufs Bild gelaufen ist!

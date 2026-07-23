@@ -155,18 +155,18 @@ class DuckAvoidanceNode:
             rospy.logerr(f"Homographie konnte nicht geladen werden: {e}")
             return
 
-        zones_3d = [
-            [(0.1, -0.05), (0.14, -0.05), (0.14, 0.05), (0.1, 0.05)],   # Zone 0
-            [(0.14, -0.07), (0.2, -0.063), (0.2, 0.063), (0.14, 0.07)], # Zone 1
-            [(0.2, -0.075), (0.3, -0.07), (0.3, 0.07), (0.2, 0.075)],    # Zone 2
-            [(0.33, -0.11), (0.42, -0.12), (0.42, 0.12), (0.33, 0.11)]    # Zone 3
-        ]
         #zones_3d = [
-        #            [(0.1, -0.06), (0.14, -0.06), (0.14, 0.06), (0.1, 0.06)],   # Zone 0
-        #            [(0.14, -0.08), (0.2, -0.073), (0.2, 0.073), (0.14, 0.08)], # Zone 1
-        #            [(0.2, -0.073), (0.3, -0.07), (0.3, 0.07), (0.2, 0.073)],    # Zone 2
-        #            [(0.33, -0.11), (0.42, -0.12), (0.42, 0.12), (0.33, 0.11)]    # Zone 3
-        #        ]
+        #    [(0.1, -0.05), (0.14, -0.05), (0.14, 0.05), (0.1, 0.05)],   # Zone 0
+        #    [(0.14, -0.07), (0.2, -0.063), (0.2, 0.063), (0.14, 0.07)], # Zone 1
+        #    [(0.2, -0.075), (0.3, -0.07), (0.3, 0.07), (0.2, 0.075)],    # Zone 2
+        #    [(0.32, -0.11), (0.42, -0.12), (0.42, 0.12), (0.32, 0.11)]    # Zone 3
+        #]
+        zones_3d = [
+                    [(0.1, -0.06), (0.14, -0.06), (0.14, 0.06), (0.1, 0.06)],   # Zone 0
+                    [(0.14, -0.08), (0.2, -0.073), (0.2, 0.073), (0.14, 0.08)], # Zone 1
+                    [(0.2, -0.073), (0.3, -0.07), (0.3, 0.07), (0.2, 0.073)],    # Zone 2
+                    [(0.33, -0.11), (0.42, -0.12), (0.42, 0.12), (0.33, 0.11)]    # Zone 3
+                ]
         for z in zones_3d:
             pts_2d = []
             for (X, Y) in z:
@@ -382,22 +382,22 @@ class DuckAvoidanceNode:
             elif self.state in ["DRIVING", "COOLDOWN"]:
                 # 1. Stufe: Harte Spurkorrektur in Zone 1
                 if z1["white"] or z1["yellow"]:
-                    cmd.v = 0.2 #0.15
-                    cmd.omega = 2.5 if z1["white"] else -2.5 #2.7
+                    cmd.v = 0.15 #0.15
+                    cmd.omega = 2.7 if z1["white"] else -2.7 #2.7
                 
                 # 2. Stufe: Weiche Spurkorrektur in Zone 2
                 elif z2["white"] or z2["yellow"]:
-                    cmd.v = 0.2 #0.15
-                    cmd.omega = 1.0 if z2["white"] else -1.0 #1.3
+                    cmd.v = 0.15 #0.15
+                    cmd.omega = 1.3 if z2["white"] else -1.3 #1.3
                     
                 # 3. Stufe: Gelb und weiß in Zone 3
                 elif z3["white"] or z3["yellow"]:
-                    cmd.v = 0.22 #0.18
+                    cmd.v = 0.18 #0.18
                     cmd.omega = 0.6 if z3["white"] else -0.6
                 
                 # 4. Stufe ALLES FREI -> geradeaus fahren
                 else:
-                    cmd.v = 0.25 
+                    cmd.v = 0.2
                     cmd.omega = 0.0
 
             # --- COMMAND PUBLISH ---
