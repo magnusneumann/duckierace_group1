@@ -5,7 +5,7 @@ Willkommen im Haupt-Repository für die Duckietown-Challenges! Dieses Projekt um
 
 ---
 
-## 📖 Detaillierte Paket-Dokumentationen
+##  Detaillierte Paket-Dokumentationen
 Für ein tiefes technisches Verständnis der implementierten Module (Perzeption, Regelung, State Machines, YOLO & Homographie) besuche bitte die detaillierten READMEs in den jeweiligen Source-Verzeichnissen:
 
 1. **[Challenge 1 & 2: Follow Lane & Intersections](src/packages/follow_lane/README.md)**
@@ -14,7 +14,7 @@ Für ein tiefes technisches Verständnis der implementierten Module (Perzeption,
 
 ---
 
-## 🛠️ Installation & Setup (Nach dem Klonen)
+##  Installation & Setup (Nach dem Klonen)
 
 1. **Dev Container:** 
    Installiere die Erweiterung "Dev Containers" in VS Code. Drücke `STRG + SHIFT + P` und wähle **Reopen in Container**. Das Dockerfile wurde so erweitert, dass alle Standard-Pakete automatisch installiert werden sollten.
@@ -41,7 +41,7 @@ Für ein tiefes technisches Verständnis der implementierten Module (Perzeption,
 
 ---
 
-## 💻 Auf dem Bot einloggen
+##  Auf dem Bot einloggen
 
 Sobald der Container läuft und du dich im DuckieNetz befindest, verbinde dich mit dem Roboter:
 ```bash
@@ -55,7 +55,7 @@ Sobald der Container läuft und du dich im DuckieNetz befindest, verbinde dich m
 
 ---
 
-## 🚀 Die Challenges Starten
+##  Die Challenges Starten
 
 Ersetze in den folgenden Befehlen `VEHICLE_NAME` immer durch den echten Namen deines Roboters (z.B. `duckiebot` oder `gundel`)!
 
@@ -99,7 +99,7 @@ rostopic pub /VEHICLE_NAME/navigation/route std_msgs/String "data: '[7, 9, 8]'"
 
 ---
 
-## 💡 Nützliche Tipps & Trouble-Shooting
+##  Nützliche Tipps & Trouble-Shooting
 
 - **GUI-Fenster öffnen sich nicht (Docker Fehler):**
   Führe im *globalen* Terminal (außerhalb des Containers) folgenden Befehl aus, um dem Docker Zugriff auf den Bildschirm zu gewähren:
