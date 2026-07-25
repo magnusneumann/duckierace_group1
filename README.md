@@ -88,13 +88,10 @@ bash launchers/mapping.sh
 *(Hinweis: Automatisches Speichern beim Schließen per `Strg+C` ist ebenfalls eingebaut!)*
 
 ### Challenge 4: Navigation (Ziele abfahren)
-Sobald das Mapping abgeschlossen ist, nutzt du den Navigationsmodus, um Schilder in einer bestimmten Reihenfolge abzufahren:
+Sobald das Mapping abgeschlossen ist, nutzt du den Navigationsmodus, um Schilder in einer bestimmten Reihenfolge(in map_and_nav/config/default_route.json definiert) abzufahren:
 ```bash
 # Terminal 1: Startet die Navigation (Roboter ist im Standby)
 bash launchers/navigation.sh
-
-# Terminal 2: Route beauftragen (z.B. Gate 7, dann 9, dann 8)
-rostopic pub /VEHICLE_NAME/navigation/route std_msgs/String "data: '[7, 9, 8]'"
 ```
 
 ---
